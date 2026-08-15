@@ -4,7 +4,7 @@
  *   - 数据文件（goal-tracker-data.json）→ 网络优先，失败回退缓存（离线可用）
  * 更新：每次部署改 CACHE 版本号即可强制刷新缓存。
  */
-const CACHE = 'goal-tracker-v1';
+const CACHE = 'goal-tracker-v2';
 
 const CORE = [
   './',
@@ -22,7 +22,8 @@ const CORE = [
   './modules/threshold.js',
   './modules/val-core.js',
   './modules/valuation.js',
-  './modules/macro.js'
+  './modules/macro.js',
+  './modules/principles.js'
 ];
 
 self.addEventListener('install', function(e){

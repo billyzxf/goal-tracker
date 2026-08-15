@@ -312,6 +312,63 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .custom-chip button:hover{color:var(--ink)}
 
 .metric-help{background:#f8f9fb;border:1px dashed var(--border-strong);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--ink2);margin-bottom:14px;line-height:1.7}
+
+/* ---------- 我的原则 ---------- */
+.pr-tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:16px}
+.pr-tab{flex:1;display:flex;align-items:center;justify-content:center;padding:10px 8px;border-radius:9px;font-size:14px;font-weight:600;color:var(--ink2);background:transparent;cursor:pointer}
+.pr-tab.active{background:var(--indigo);color:#fff}
+.pr-toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pr-search{flex:1;min-width:200px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);font-size:14px;outline:none}
+.pr-search:focus{border-color:var(--indigo)}
+.pr-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:720px){.pr-grid{grid-template-columns:1fr 1fr}}
+.pr-card{cursor:pointer}
+.pr-card .sec-title h2{font-size:15px}
+.pr-point{font-size:13px;color:var(--ink2);margin:8px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pr-foot{display:flex;align-items:center;gap:8px;font-size:12px}
+.pr-foot .badge{margin-left:auto}
+.pr-fav-on{color:#f59e0b}
+.pr-due{margin-bottom:16px;border-color:var(--red)}
+.pr-due-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:8px;background:var(--bg);border:1px solid var(--line)}
+.pr-due-item:last-child{margin-bottom:0}
+.pr-due-item.pr-overdue{background:var(--pink-bg);border-color:#fecaca}
+.pr-due-item.pr-today{background:var(--indigo-bg);border-color:#c7d2fe}
+.pr-due-item.pr-soon{background:var(--amber-bg);border-color:#fde68a}
+.pr-due-main{flex:1;min-width:0}
+.pr-due-title{font-size:14px;font-weight:600}
+.pr-due-item.pr-overdue .pr-due-title{color:var(--red)}
+.pr-rv-item .sec-title h2{font-size:15px}
+.pr-rv-line{display:flex;align-items:center;gap:8px;margin:6px 0}
+.pr-practice{font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.pr-reflect{font-size:12px;color:var(--ink2)}
+.pr-rv-mini{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:8px;font-size:13px}
+.pr-log-item .sec-title h2{font-size:15px}
+.pr-scene{font-size:13px;margin-bottom:6px}
+.pr-scene b{color:var(--ink2);font-weight:600}
+.pr-act{font-size:13px;background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.pr-goal{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.pr-goal:last-child{margin-bottom:0}
+.pr-goal-nm{width:64px;font-size:13px;font-weight:700;flex-shrink:0}
+.pr-goal-bar{flex:1;height:12px;background:var(--bg);border-radius:99px;overflow:hidden}
+.pr-goal-fill{height:100%;border-radius:99px;transition:width .4s}
+.pr-goal-pct{width:44px;font-size:12px;font-weight:700;text-align:right;flex-shrink:0;color:var(--ink2)}
+.pr-pie{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.pr-rank{display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px}
+.pr-rank:last-child{margin-bottom:0}
+.pr-rk{width:20px;height:20px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.pr-rank-nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-rank-bar-bg{flex:1.4;height:8px;background:var(--bg);border-radius:99px;overflow:hidden}
+.pr-rank-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,#5b64f2,#7c3aed)}
+.pr-rank-v{font-size:12px;font-weight:700;width:34px;text-align:right;flex-shrink:0}
+.pr-stars{display:flex;gap:6px}
+.pr-star{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#d1d5db;background:transparent;cursor:pointer}
+.pr-star.on{color:#f59e0b}
+.pr-verdicts{display:flex;gap:8px;flex-wrap:wrap}
+.pr-verdict{flex:1;min-width:90px;padding:10px 6px;border:1px solid var(--line);border-radius:10px;font-size:13px;font-weight:600;color:var(--ink2);background:#fff;cursor:pointer;min-height:42px}
+.pr-verdict.active{color:#fff}
+.pr-v-keep.active{background:var(--green);border-color:var(--green)}
+.pr-v-part.active{background:var(--amber);border-color:var(--amber)}
+.pr-v-vio.active{background:var(--red);border-color:var(--red)}
 .metric-help code{background:#fff;padding:1px 5px;border-radius:3px;font-family:monospace;font-size:11px;border:1px solid var(--line);color:var(--ink)}
 .fin-section-tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
 .fin-section-tabs button{background:var(--bg);border:1px solid var(--line);padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;color:var(--ink2)}
