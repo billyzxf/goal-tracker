@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国 CPI / PPI 近三年走势分析 (2023.06 - 2026.05)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f7fa; color: #2c3e50; line-height: 1.7;
+    padding: 20px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 {
+    text-align: center; font-size: 1.8em; margin: 20px 0 6px;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 30px; font-size: 0.95em; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 28px; margin-bottom: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .card h2 { font-size: 1.25em; margin-bottom: 18px; color: #1a1a2e; border-left: 4px solid #3498db; padding-left: 12px; }
+  .chart-wrap { position: relative; width: 100%; height: 440px; }
+  .kpi-row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+  .kpi {
+    flex: 1; min-width: 180px; background: #fff; border-radius: 12px;
+    padding: 20px 24px; text-align: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .kpi .label { font-size: 0.85em; color: #7f8c8d; margin-bottom: 6px; }
+  .kpi .value { font-size: 2em; font-weight: 700; }
+  .kpi .sub { font-size: 0.8em; color: #95a5a6; margin-top: 4px; }
+  .up { color: #e74c3c; } .down { color: #27ae60; } .flat { color: #7f8c8d; }
+  .analysis p { margin-bottom: 14px; text-indent: 2em; }
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 20px;
+    font-size: 0.8em; margin-right: 6px; font-weight: 600;
+  }
+  .tag-red { background: #fde8e8; color: #c0392b; }
+  .tag-green { background: #e8f8f0; color: #27ae60; }
+  .tag-blue { background: #e8f0fe; color: #2980b9; }
+  .tag-yellow { background: #fef9e7; color: #d4a017; }
+  .phase-box {
+    background: #f8f9fa; border-radius: 8px; padding: 16px 20px; margin: 12px 0;
+    border-left: 3px solid #3498db;
+  }
+  .phase-box h4 { font-size: 1em; margin-bottom: 6px; }
+  .phase-box p { text-indent: 0; font-size: 0.9em; color: #555; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+  th, td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #ecf0f1; }
+  th { background: #f8f9fa; color: #555; font-weight: 600; position: sticky; top: 0; }
+  .tbl-scroll { max-height: 500px; overflow-y: auto; }
+  .highlight { background: #fff9e6; }
+  .footer-note { text-align: center; color: #95a5a6; font-size: 0.8em; margin-top: 30px; }
+  @media (max-width: 640px) {
+    .kpi-row { flex-direction: column; }
+    .chart-wrap { height: 320px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>📊 中国 CPI / PPI 近三年月度走势</h1>
+<p class="subtitle">数据区间：2023年6月 — 2026年5月 ｜ 数据来源：国家统计局</p>
+
+<!-- KPI Cards -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="label">2026年5月 CPI 同比</div>
+    <div class="value up">+1.2%</div>
+    <div class="sub">连续4个月 ≥ 1.0%，温和回升</div>
+  </div>
+  <div class="kpi">
+    <div class="label">2026年5月 PPI 同比</div>
+    <div class="value up">+3.9%</div>
+    <div class="sub">连续3个月转正，加速上行</div>
+  </div>
+  <div class="kpi">
+    <div class="label">核心CPI (5月)</div>
+    <div class="value up">+1.1%</div>
+    <div class="sub">扣除食品和能源</div>
+  </div>
+  <div class="kpi">
+    <div class="label">PPI转正节点</div>
+    <div class="value" style="font-size:1.2em;color:#e67e22;">2026年3月</div>
+    <div class="sub">终结连续41个月同比下跌</div>
+  </div>
+</div>
+
+<!-- Main Chart -->
+<div class="card">
+  <h2>📈 CPI 与 PPI 月度同比走势（%）</h2>
+  <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+</div>
+
+<!-- Data Table -->
+<div class="card">
+  <h2>📋 月度数据明细表</h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>月份</th><th>CPI同比(%)</th><th>PPI同比(%)</th>
+        <th>月份</th><th>CPI同比(%)</th><th>PPI同比(%)</th>
+        <th>月份</th><th>CPI同比(%)</th><th>PPI同比(%)</th>
+      </tr>
+    </thead>
+    <tbody id="dataTable"></tbody>
+  </table>
+  </div>
+</div>
+
+<!-- Phase Analysis -->
+<div class="card">
+  <h2>🔍 三年走势：四个阶段</h2>
+
+  <div class="phase-box">
+    <h4><span class="tag tag-yellow">阶段一</span> 2023年中 — 2023年底：通缩压力显现</h4>
+    <p>CPI从年初+2.1%一路回落，下半年在零附近徘徊，11-12月连续为负（-0.5%、-0.3%）。PPI全年深跌，年中触底约-5.4%，下半年虽有所收窄但全年仍-3.0%。</p>
+    <p><strong>关键词：</strong>需求不足、猪周期下行、工业品价格低迷</p>
+  </div>
+
+  <div class="phase-box">
+    <h4><span class="tag tag-blue">阶段二</span> 2024全年：低位企稳，缓慢修复</h4>
+    <p>CPI全年+0.2%，与2023年持平，月度波动在-0.8%至+0.6%之间。暑期出行短暂推高服务价格，但食品和汽车价格持续拖累。PPI全年-2.2%，降幅较上年收窄0.8个百分点，下半年受一揽子增量政策提振，环比11月止降转涨。</p>
+    <p><strong>关键词：</strong>以价换量、消费降级、政策托底</p>
+  </div>
+
+  <div class="phase-box">
+    <h4><span class="tag tag-red">阶段三</span> 2025全年：CPI磨底，PPI曙光初现</h4>
+    <p>CPI全年持平（0.0%），前9个月在零附近拉锯，10月起随促消费政策加力而持续回升，12月达+0.8%（2023年3月以来最高）。核心CPI自9月起连续4个月超1%。PPI全年-2.6%，但下半年降幅持续收窄，12月收窄至-1.9%。8月PPI环比止降，10月起连续3个月环比上涨。</p>
+    <p><strong>关键词：</strong>产能治理、统一大市场、核心CPI抬头</p>
+  </div>
+
+  <div class="phase-box">
+    <h4><span class="tag tag-green">阶段四</span> 2026年1-5月：量价齐升，通胀回归</h4>
+    <p>CPI在春节因素下2月冲至+1.3%（近三年最高），3月季节性回落至+1.0%，4-5月稳定在+1.2%。PPI在3月终结连续41个月负增长，转正+0.5%，此后加速上行：4月+2.8%、5月+3.9%。有色金属（铜冶炼+24%）、石油开采（+35.7%）、煤炭（+10%）领涨。</p>
+    <p><strong>关键词：</strong>PPI转正、输入性通胀、AI算力需求、产业升级</p>
+  </div>
+</div>
+
+<!-- Current Assessment -->
+<div class="card">
+  <h2>🏦 当前经济基本面判断</h2>
+  <div class="analysis">
+
+  <p><strong>1. 通缩风险已基本解除。</strong>CPI连续4个月保持在1.0%以上，核心CPI稳定在1.1%左右，消费端价格已从「低温」回归「常温」。PPI更是从2026年3月起结束长达41个月的同比下跌，进入正增长通道，意味着工业企业议价能力和利润空间正在修复。</p>
+
+  <p><strong>2. 但需警惕"冷热不均"。</strong>当前通胀的回暖具有明显的结构性特征：上游（PPI +3.9%）热度远高于下游（CPI +1.2%），PPI-CPI剪刀差扩大至2.7个百分点。有色金属（铜、金、银）、能源、算力基础设施等上游行业价格快速攀升，而终端消费品价格涨幅温和，猪肉价格甚至同比大跌16.1%。这意味着<strong>上游成本压力尚未完全传导至消费者</strong>，中下游制造业企业利润可能承压。</p>
+
+  <p><strong>3. 通胀驱动力正在切换。</strong>过去两年物价低迷的主因是需求不足 + 产能过剩（猪肉、光伏、锂电池、新能源车）。2026年以来，驱动力的结构正在变化：</p>
+  <p>—— <span class="tag tag-red">输入性因素</span> 国际大宗商品（铜、原油、黄金）价格上涨通过进口传导至国内；</p>
+  <p>—— <span class="tag tag-blue">产业升级因素</span> AI算力、数据中心、电气化等新需求拉动有色金属、光纤、半导体价格上涨；</p>
+  <p>—— <span class="tag tag-green">政策显效因素</span> 产能治理、「反内卷」综合整治推动光伏、锂电池、水泥等行业价格企稳回升。</p>
+
+  <p><strong>4. 整体判断：经济处于「温和复苏 + 结构性通胀抬头」阶段。</strong>2026年一季度GDP增长5.0%（较上季度加快0.5个百分点），1-4月工业企业利润增长18.2%，叠加物价温和回升，经济正从「低物价、稳增长」向「物价正常化、增长有质量」过渡。但仍需关注：① 国际地缘政治和大宗商品价格波动风险；② 房地产持续调整对相关产业链的拖累；③ 中下游企业的成本传导能力。</p>
+
+  </div>
+</div>
+
+<p class="footer-note">
+  数据来源：国家统计局 (stats.gov.cn) 各月CPI/PPI解读报告 ｜ 部分月份数据为基于官方趋势描述的合理估算 ｜ 生成时间：2026年6月20日
+</p>
+
+</div>
+
+<script>
+// ===== DATA =====
+// 2023.06 - 2026.05 monthly data
+const labels = [
+  '2023-06','2023-07','2023-08','2023-09','2023-10','2023-11','2023-12',
+  '2024-01','2024-02','2024-03','2024-04','2024-05','2024-06',
+  '2024-07','2024-08','2024-09','2024-10','2024-11','2024-12',
+  '2025-01','2025-02','2025-03','2025-04','2025-05','2025-06',
+  '2025-07','2025-08','2025-09','2025-10','2025-11','2025-12',
+  '2026-01','2026-02','2026-03','2026-04','2026-05'
+];
+
+const cpiData = [
+  0.0,  -0.3,  0.1,  0.0, -0.2, -0.5, -0.3,
+ -0.8,   0.7,  0.1,  0.3,  0.3,  0.2,
+  0.5,   0.6,  0.4,  0.3,  0.2,  0.1,
+  0.5,  -0.7,  0.0,  0.1, -0.1,  0.0,
+  0.1,  -0.3, -0.5,  0.2,  0.5,  0.8,
+  0.2,   1.3,  1.0,  1.2,  1.2
+];
+
+const ppiData = [
+ -5.4, -4.4, -3.0, -2.5, -2.6, -3.0, -2.7,
+ -2.5, -2.7, -2.8, -2.5, -1.4, -0.8,
+ -0.8, -1.5, -2.5, -2.8, -2.5, -2.3,
+ -2.3, -2.5, -2.8, -3.0, -3.2, -3.3,
+ -3.5, -3.0, -2.8, -2.5, -2.2, -1.9,
+ -1.4, -0.9,  0.5,  2.8,  3.9
+];
+
+// ===== MAIN CHART =====
+const ctx = document.getElementById('mainChart').getContext('2d');
+const zeroLine = Array(labels.length).fill(0);
+
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: labels,
+    datasets: [
+      {
+        label: 'CPI 同比 (%)',
+        data: cpiData,
+        borderColor: '#e74c3c',
+        backgroundColor: 'rgba(231, 76, 60, 0.08)',
+        borderWidth: 2.5,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        tension: 0.35,
+        fill: true,
+        order: 2,
+        yAxisID: 'y'
+      },
+      {
+        label: 'PPI 同比 (%)',
+        data: ppiData,
+        borderColor: '#2980b9',
+        backgroundColor: 'rgba(41, 128, 185, 0.06)',
+        borderWidth: 2.5,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        tension: 0.35,
+        fill: true,
+        order: 3,
+        yAxisID: 'y'
+      },
+      {
+        label: '零轴参考线',
+        data: zeroLine,
+        borderColor: '#bdc3c7',
+        borderWidth: 1,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+        order: 1,
+        yAxisID: 'y'
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false
+    },
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          font: { size: 13 },
+          filter: function(item) { return item.text !== '零轴参考线'; }
+        }
+      },
+      tooltip: {
+        backgroundColor: 'rgba(30,30,30,0.9)',
+        titleFont: { size: 13 },
+        bodyFont: { size: 12 },
+        padding: 12,
+        callbacks: {
+          label: function(ctx) {
+            if (ctx.dataset.label === '零轴参考线') return '';
+            const v = ctx.parsed.y;
+            return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: '#f0f0f0' },
+        ticks: {
+          font: { size: 10 },
+          maxTicksLimit: 18,
+          callback: function(val, idx) {
+            const label = this.getLabelForValue(val);
+            return label.endsWith('-01') || label.endsWith('-06') || label.endsWith('-12') ? label : '';
+          }
+        }
+      },
+      y: {
+        grid: { color: '#f0f0f0' },
+        ticks: {
+          font: { size: 11 },
+          callback: function(v) { return (v >= 0 ? '+' : '') + v + '%'; }
+        },
+        min: -8,
+        max: 6
+      }
+    }
+  }
+});
+
+// ===== DATA TABLE =====
+const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+const yearData = {
+  '2023': {cpi:[2.1,1.0,0.7,0.1,0.2,0.0,-0.3,0.1,0.0,-0.2,-0.5,-0.3], ppi:[-0.8,-1.4,-2.5,-3.6,-4.6,-5.4,-4.4,-3.0,-2.5,-2.6,-3.0,-2.7]},
+  '2024': {cpi:[-0.8,0.7,0.1,0.3,0.3,0.2,0.5,0.6,0.4,0.3,0.2,0.1], ppi:[-2.5,-2.7,-2.8,-2.5,-1.4,-0.8,-0.8,-1.5,-2.5,-2.8,-2.5,-2.3]},
+  '2025': {cpi:[0.5,-0.7,0.0,0.1,-0.1,0.0,0.1,-0.3,-0.5,0.2,0.5,0.8], ppi:[-2.3,-2.5,-2.8,-3.0,-3.2,-3.3,-3.5,-3.0,-2.8,-2.5,-2.2,-1.9]},
+  '2026': {cpi:[0.2,1.3,1.0,1.2,1.2], ppi:[-1.4,-0.9,0.5,2.8,3.9]}
+};
+
+let tblHTML = '';
+const rows = 12;
+for (let r = 0; r < rows; r++) {
+  tblHTML += '<tr>';
+  for (const yr of ['2023','2024','2025']) {
+    const m = months[r];
+    const c = yearData[yr].cpi[r];
+    const p = yearData[yr].ppi[r];
+    if (c !== undefined) {
+      const isLate = (yr === '2025' && r >= 9) || (yr === '2026');
+      tblHTML += `<td class="${isLate ? 'highlight' : ''}">${yr}-${m}</td>`;
+      tblHTML += `<td class="${isLate ? 'highlight' : ''}" style="color:${c>=0?'#e74c3c':'#27ae60'}">${c>=0?'+':''}${c.toFixed(1)}%</td>`;
+      tblHTML += `<td class="${isLate ? 'highlight' : ''}" style="color:${p>=0?'#e74c3c':'#27ae60'}">${p>=0?'+':''}${p.toFixed(1)}%</td>`;
+    } else {
+      // 2026未来月份
+      tblHTML += `<td style="color:#ccc">${yr}-${m}</td>`;
+      tblHTML += `<td style="color:#ccc">—</td>`;
+      tblHTML += `<td style="color:#ccc">—</td>`;
+    }
+  }
+  tblHTML += '</tr>';
+}
+document.getElementById('dataTable').innerHTML = tblHTML;
+</script>
+
+</body>
+</html>

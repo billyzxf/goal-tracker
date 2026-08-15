@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoalTracker · 目标追踪</title>
+<meta name="theme-color" content="#0ea97b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GoalTracker">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<!-- KaTeX 已改为按需懒加载：仅当页面出现公式时才动态引入，加快首屏加载 -->
+</head>
+<body>
+<!-- 移动端顶栏（<720px 显示） -->
+<div class="mobile-topbar">
+  <button class="hamburger" id="m-menu" aria-label="打开菜单">☰</button>
+  <div class="m-brand"><div class="brand-logo">🎯</div><div class="m-title">GoalTracker</div></div>
+</div>
+<div class="mobile-backdrop" id="m-backdrop"></div>
+<aside id="sidebar">
+  <div class="brand">
+    <div class="brand-logo">🎯</div>
+    <div><div class="brand-name">GoalTracker</div><div class="brand-sub">GOAL TRACKER</div></div>
+  </div>
+  <nav id="nav"></nav>
+  <div class="side-foot">
+    <div id="sync-box"></div>
+    <button class="btn ghost sm" data-action="data.export" title="导出完整数据备份：goal-tracker-data.json（含全部模块数据，用于换设备/同步盘）">⬇ 导出备份</button>
+    <button class="btn ghost sm" data-action="data.import" title="导入数据：goal-tracker-data.json（会用导入内容覆盖当前数据，建议先导出备份）">⬆ 导入数据</button>
+    <div class="side-note">数据文件名：goal-tracker-data.json<br>IndexedDB 本地存储 · 导出 JSON 同步</div>
+  </div>
+</aside>
+<main id="main"></main>
+<div id="modal-root"></div>
+<input type="file" id="import-file" accept="application/json" hidden>
+<!-- 内核 -->
+<script src="core.js"></script>
+<!-- 模块（按需新增：加一行 script + 一个 modules/*.js 即可，无需改内核） -->
+<script src="modules/dashboard.js"></script>
+<script src="modules/fitness.js"></script>
+<script src="modules/job.js"></script>
+<script src="modules/reading.js"></script>
+<script src="modules/side.js"></script>
+<script src="modules/threshold.js"></script>
+<!-- 估值纯函数（被 valuation.js / dashboard 复用），须在 valuation.js 之前加载 -->
+<script src="modules/val-core.js"></script>
+<script src="modules/valuation.js"></script>
+<script src="modules/macro.js"></script>
+<!-- 移动端交互 + Service Worker 注册 -->
+<script src="mobile.js"></script>
+<!-- 启动入口 -->
+<script src="boot.js"></script>
+</body>
+</html>

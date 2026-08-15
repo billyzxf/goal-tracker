@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# 临时 / 备份 / 日志
+*.log
+*.tmp
+*_bak.*
+*.bak
+.bak/
+
+# 个人目标 / 副业数据（含隐私，不提交）
+goal-tracker-data*.json
+
+# 本地脚本产物
+*.ipynb_checkpoints
