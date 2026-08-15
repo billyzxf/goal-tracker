@@ -2,12 +2,12 @@
  * GoalTracker · 内核（core）
  * ---------------------------------------------------------------------
  * 职责：
- *   1. 工具函数 / Markdown 渲染 / 公式排版
- *   2. 数据层：IndexedDB + localStorage + JSON 备份，schema 驱动迁移
+ *   1. 工具函数 / Markdown 渲染 / 公式排版 / Toast / 深色模式
+ *   2. 数据层：IndexedDB + localStorage + JSON 备份，schema 驱动迁移（防抖批量写入）
  *   3. 模块注册机制（Register.module），供 modules/ 下各模块注册
  *   4. 全局状态 state、UI 组件库、弹窗
  *   5. 事件分发（actions / changes / inputs / forms 四表统一合并）
- *   6. 渲染入口（按 state.view 查表调用模块 render）、导航、初始化
+ *   6. 渲染入口（按 state.view 查表调用模块 render）、hash 路由（#/view，支持前进后退）、初始化
  *
  * 模块约定：modules/*.js 通过 IIFE 调用 window.Register.module({...})
  * ===================================================================== */
@@ -23,6 +23,34 @@ const todayIdx = () => (new Date().getDay() + 6) % 7; // 周一=0
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtCN(dstr){ const d = dstr ? new Date(dstr + 'T00:00:00') : new Date();
   return d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' + WEEK_CN[d.getDay()]; }
+
+/* ================= 深色模式 =================
+ * 主题由 index.html 的内联脚本在首帧前应用（防闪白），
+ * 这里负责切换、持久化与 UI 状态（按钮文案 / meta theme-color）同步。
+ */
+const THEME_KEY = 'goalTracker.theme';
+function isDarkTheme(){ return document.documentElement.classList.contains('dark'); }
+function applyTheme(dark){
+  document.documentElement.classList.toggle('dark', !!dark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', dark ? '#0d1117' : '#0ea97b');
+  try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch(e){}
+  document.querySelectorAll('[data-action="theme.toggle"]').forEach(b => {
+    b.textContent = dark ? '☀️ 浅色模式' : '🌙 深色模式';
+  });
+}
+function toggleTheme(){ applyTheme(!isDarkTheme()); }
+
+/* ================= Toast 轻提示 =================
+ * 替代 alert() 的非阻断式反馈（导入/导出成功等场景）。
+ */
+function toast(msg, ms){
+  let wrap = document.querySelector('.toast-wrap');
+  if(!wrap){ wrap = document.createElement('div'); wrap.className = 'toast-wrap'; document.body.appendChild(wrap); }
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, ms || 2200);
+}
 
 /* ================= Markdown 渲染（支持 $公式$） ================= */
 function md(src){
@@ -171,18 +199,32 @@ async function loadAsync(){
 }
 
 let saveTimer = null;
+function persistLocal(){
+  // localStorage 兜底快照（兼容旧数据迁移路径）；数据量大时 JSON 序列化开销高，故只在防抖批次里写
+  try { localStorage.setItem(LS_KEY, JSON.stringify(DB)); } catch(e){ /* 超出配额时静默，IndexedDB 仍是主存储 */ }
+}
 function save(){
-  if(!appReady) return;
+  if(!appReady || !DB) return;
   DB.meta = DB.meta || {};
   DB.meta.updated = new Date().toISOString();
   DB.meta.fresh = false;
-  localStorage.setItem(LS_KEY, JSON.stringify(DB));
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    saveTimer = null;
+    persistLocal();
     try { await idbSet('data', DB); } catch(e){ console.error('IndexedDB 写入失败:', e); }
   }, 300);
   refreshBackupReminder(); // 数据有改动时即时刷新侧边栏备份提醒
 }
+function flushSave(){
+  // 页面隐藏 / 关闭前兜底落盘，防止防抖窗口内丢失最后一次改动
+  if(!appReady || !DB || saveTimer === null) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  persistLocal();
+  idbSet('data', DB).catch(() => {});
+}
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushSave(); });
 
 /* ================= 自动导出提醒 =================
  * 数据保存在浏览器（IndexedDB/localStorage）里，不会自动写回磁盘 JSON。
@@ -243,7 +285,7 @@ function ring(pct, color, size){
   const r = 52, c = 2 * Math.PI * r, off = c * (1 - Math.min(100, Math.max(0, pct)) / 100);
   return '<div class="ring-wrap" style="width:' + size + 'px;height:' + size + 'px">' +
     '<svg viewBox="0 0 120 120" class="ring-svg">' +
-    '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#eef0f4" stroke-width="11"/>' +
+    '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="var(--ring-track)" stroke-width="11"/>' +
     '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="11" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '" transform="rotate(-90 60 60)"/>' +
     '</svg><div class="ring-num" style="color:' + color + '">' + Math.round(pct) + '<small>%</small></div></div>';
 }
@@ -290,7 +332,9 @@ function findById(arr, id){ return arr.find(x => x.id === id); }
 
 /* ================= 内核通用行为（不属于任何模块） ================= */
 Object.assign(ACTIONS, {
-  'nav': el => { state.view = el.dataset.view; render(); },
+  // hash 路由：导航只改 hash，由 hashchange 统一驱动渲染（支持刷新保持 / 前进后退）
+  'nav': el => { location.hash = '/' + el.dataset.view; },
+  'theme.toggle': () => toggleTheme(),
   'modal.cancel': () => closeModal(),
   'app.reload': () => window.location.reload(),
   'md.preview': (el) => {
@@ -300,7 +344,7 @@ Object.assign(ACTIONS, {
   },
   'data.export': async () => {
     const blob = new Blob([JSON.stringify(DB, null, 2)], { type:'application/json' });
-    const markExported = () => { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); updateSyncUI(); };
+    const markExported = () => { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); updateSyncUI(); toast('✅ 备份已导出'); };
     // 优先使用 File System Access API：弹出系统「另存为」对话框，可自行选择保存到任意文件夹
     if(window.showSaveFilePicker){
       try {
@@ -327,6 +371,20 @@ Object.assign(ACTIONS, {
     markExported();
   },
   'data.import': () => $('#import-file').click(),
+});
+
+/* ================= hash 路由 =================
+ * URL 形如 #/fitness。hashchange 由 导航点击 / 前进后退 / 刷新 共同触发，
+ * 统一在此同步 state.view 并渲染，避免双重渲染。
+ */
+function viewFromHash(){
+  const v = location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
+  return MODULES[v] ? v : '';
+}
+window.addEventListener('hashchange', () => {
+  // hash 为空（如从 #/fitness 后退回初始页）时回落到总览
+  const v = viewFromHash() || 'dashboard';
+  if(v !== state.view){ state.view = v; render(); }
 });
 
 /* ================= 事件委托 ================= */
@@ -363,7 +421,7 @@ $('#import-file').addEventListener('change', e => {
   reader.onload = () => {
     try{
       const d = JSON.parse(reader.result);
-      if(hasRequiredModules(d)){ DB = ensure(d); save(); render(); alert('导入成功！'); }
+      if(hasRequiredModules(d)){ DB = ensure(d); save(); render(); toast('✅ 导入成功，已覆盖当前数据'); }
       else alert('文件格式不正确。\n\n请导入本应用导出的完整数据备份「goal-tracker-data.json」（含所有模块数据）。\n不要选财务/盈利预测/宏观的 CSV，那需要到对应模块里分别导入。');
     }catch(err){ alert('导入失败：' + err.message + '\n\n请选择「goal-tracker-data.json」格式的 JSON 数据文件。'); }
     e.target.value = '';
@@ -391,12 +449,16 @@ function renderKeep(inputKey){
   const el2 = document.querySelector('[data-input="' + inputKey + '"]');
   if(el2){ el2.focus(); el2.setSelectionRange(pos, pos); }
 }
+let lastRenderView = null;
 function render(){
+  // 视图切换检测：切换时滚动复位到顶部（同一视图内重绘才恢复滚动位置）
+  const viewChanged = lastRenderView !== state.view;
+  lastRenderView = state.view;
   // 记录重绘前焦点元素 + 滚动位置，重绘后尽量恢复，避免每次操作都跳回顶部
   const activeEl = document.activeElement;
   const focusedSel = (activeEl && activeEl !== document.body && activeEl.id)
     ? activeEl.id : null;
-  const mainScrollTop = window.scrollY;
+  const mainScrollTop = viewChanged ? 0 : window.scrollY;
   const main = $('#main');
 
   // 仅当视图真正切换时才重建整个容器；同一视图内的重绘走渲染函数
@@ -412,6 +474,14 @@ function render(){
     }
   }
   else { main.innerHTML = '<div class="empty">未找到视图：' + esc(state.view) + '</div>'; }
+
+  // 标签页标题随视图切换；视图切换时加渐入动画
+  document.title = (mod && mod.nav) ? mod.nav.label + ' · GoalTracker' : 'GoalTracker · 目标追踪';
+  if(viewChanged){
+    main.classList.remove('view-enter');
+    void main.offsetWidth; // 强制 reflow，确保连续切换时动画能重新触发
+    main.classList.add('view-enter');
+  }
 
   // KaTeX 懒加载：仅当页面里确有公式且库未加载时，动态引入 CDN 脚本
   if(!window.katex && main.querySelector('.math-tex')){
@@ -450,10 +520,14 @@ function loadKatex(){
 }
 async function initApp(){
   const main = document.getElementById('main');
-  if(main) main.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:60vh"><div style="text-align:center;color:#888"><div style="font-size:32px;margin-bottom:12px">⏳</div>正在加载数据...</div></div>';
+  if(main) main.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:60vh"><div style="text-align:center;color:var(--ink2)"><div style="font-size:32px;margin-bottom:12px">⏳</div>正在加载数据...</div></div>';
   DB = await loadAsync();
   try { await idbSet('data', DB); } catch(e){}
   appReady = true;
+  // 初始视图优先取 URL hash（刷新 / 分享链接保持视图），并同步主题按钮文案
+  const hv = viewFromHash();
+  if(hv) state.view = hv;
+  applyTheme(isDarkTheme());
   renderNav();
   render();
   updateSyncUI();

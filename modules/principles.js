@@ -498,7 +498,7 @@
     let xs=[],ys=[];
     for(let i=0;i<list.length;i++){ xs.push(padL+i*(W-padL-16)/(list.length-1)); ys.push(padT+(5-Number(list[i].score||3))/(5-1)*(H-padT-padB)); }
     let lines='';
-    for(let g=1;g<=5;g++){ const gy=padT+(5-g)/(5-1)*(H-padT-padB); lines+='<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-16)+'" y2="'+gy+'" stroke="#eef0f4" stroke-width="1"/><text x="'+(padL-6)+'" y="'+(gy+3)+'" text-anchor="end" font-size="10" fill="#8a93a3">'+g+'</text>'; }
+    for(let g=1;g<=5;g++){ const gy=padT+(5-g)/(5-1)*(H-padT-padB); lines+='<line class="cgrid" x1="'+padL+'" y1="'+gy+'" x2="'+(W-16)+'" y2="'+gy+'" stroke-width="1"/><text x="'+(padL-6)+'" y="'+(gy+3)+'" text-anchor="end" font-size="10" fill="#8a93a3">'+g+'</text>'; }
     let poly=''; for(let i=0;i<xs.length;i++) poly+=(i?' L':'M')+xs[i].toFixed(1)+','+ys[i].toFixed(1);
     const area=poly+' L'+xs[xs.length-1].toFixed(1)+','+(H-padB)+' L'+xs[0].toFixed(1)+','+(H-padB)+' Z';
     let dots=''; for(let i=0;i<xs.length;i++) dots+='<circle cx="'+xs[i].toFixed(1)+'" cy="'+ys[i].toFixed(1)+'" r="3.4" fill="#5b64f2"/>';

@@ -189,7 +189,7 @@
     for(let i = 0; i <= 4; i++){
       const y = pad.t + i * (h - pad.t - pad.b) / 4;
       const val = maxV - i * range / 4;
-      svg += '<line x1="' + pad.l + '" y1="' + y.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + y.toFixed(1) + '" stroke="#eef0f4" stroke-width="1"/>';
+      svg += '<line class="cgrid" x1="' + pad.l + '" y1="' + y.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + y.toFixed(1) + '" stroke-width="1"/>';
       svg += '<text x="' + (pad.l-6) + '" y="' + (y+3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#8a93a3">' + val.toFixed(1) + '</text>';
     }
     let estPath = data.map((v,i) => (i===0?'M':'L') + ' ' + xS(i).toFixed(1) + ' ' + yS(v.estimatedValue).toFixed(1)).join(' ');

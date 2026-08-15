@@ -4,11 +4,11 @@
 (function(){
   function renderDashboard(){
     const f = DB.fitness, j = DB.job;
-    const fDone = f.weekPlan.filter(x => x.done).length, fPct = fDone / f.weekPlan.length * 100;
-    const jDone = j.plan.filter(x => x.done).length, jPct = j.plan.length / 1 ? jDone / j.plan.length * 100 : 0;
+    const fDone = f.weekPlan.filter(x => x.done).length, fPct = f.weekPlan.length ? fDone / f.weekPlan.length * 100 : 0;
+    const jDone = j.plan.filter(x => x.done).length, jPct = j.plan.length ? jDone / j.plan.length * 100 : 0;
     const skillPct = j.topics.length ? Math.round(j.topics.reduce((s, t) => s + (t.level || 0), 0) / j.topics.length) : 0;
     const activeTargets = j.targets.filter(t => !['offer', '拒信'].includes(t.status)).length;
-    const today = f.weekPlan[todayIdx()];
+    const today = f.weekPlan[todayIdx()] || { plan: '', done: false };
     const todayLog = j.daily.find(x => x.date === dateStr());
     const shopLeft = f.shopping.filter(x => !x.done).length;
     const books = new Set(DB.reading.notes.map(n => n.book)).size;

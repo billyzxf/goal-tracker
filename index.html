@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>GoalTracker · 目标追踪</title>
+<meta name="description" content="个人目标追踪 PWA：健身打卡、求职准备、阅读笔记、副业探索、门槛追踪、公司估值与宏观经济，数据本地存储、离线可用。">
 <meta name="theme-color" content="#0ea97b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -12,6 +13,20 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
+<!-- 主题需在首帧前应用，避免深色用户看到闪白（读取本地偏好，未设置时跟随系统） -->
+<script>
+(function(){
+  try{
+    var t = localStorage.getItem('goalTracker.theme');
+    var dark = t ? t === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if(dark){
+      document.documentElement.classList.add('dark');
+      var m = document.querySelector('meta[name="theme-color"]');
+      if(m) m.setAttribute('content', '#0d1117');
+    }
+  }catch(e){}
+})();
+</script>
 <!-- KaTeX 已改为按需懒加载：仅当页面出现公式时才动态引入，加快首屏加载 -->
 </head>
 <body>
@@ -29,6 +44,7 @@
   <nav id="nav"></nav>
   <div class="side-foot">
     <div id="sync-box"></div>
+    <button class="btn ghost sm" data-action="theme.toggle" title="切换深色 / 浅色主题">🌙 深色模式</button>
     <button class="btn ghost sm" data-action="data.export" title="导出完整数据备份：goal-tracker-data.json（含全部模块数据，用于换设备/同步盘）">⬇ 导出备份</button>
     <button class="btn ghost sm" data-action="data.import" title="导入数据：goal-tracker-data.json（会用导入内容覆盖当前数据，建议先导出备份）">⬆ 导入数据</button>
     <div class="side-note">数据文件名：goal-tracker-data.json<br>IndexedDB 本地存储 · 导出 JSON 同步</div>

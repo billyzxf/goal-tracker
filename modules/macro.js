@@ -175,13 +175,13 @@
     for(let gi = 0; gi <= 4; gi++){
       const gy = pad.t + gi * (h - pad.t - pad.b) / 4;
       const gv = maxV - gi * range / 4;
-      svg += '<line x1="' + pad.l + '" y1="' + gy.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + gy.toFixed(1) + '" stroke="#eef0f4" stroke-width="1"/>';
+      svg += '<line class="cgrid" x1="' + pad.l + '" y1="' + gy.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + gy.toFixed(1) + '" stroke-width="1"/>';
       svg += '<text x="' + (pad.l-6) + '" y="' + (gy+3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#8a93a3">' + (Math.abs(gv) < 100 ? gv.toFixed(2) : gv.toFixed(1)) + '</text>';
     }
     // 0 轴加粗（若在画布内）
     if(0 >= minV && 0 <= maxV){
       const y0 = yS(0);
-      svg += '<line x1="' + pad.l + '" y1="' + y0.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + y0.toFixed(1) + '" stroke="#d8dce3" stroke-width="1.2" stroke-dasharray="4,3"/>';
+      svg += '<line class="czero" x1="' + pad.l + '" y1="' + y0.toFixed(1) + '" x2="' + (w-pad.r) + '" y2="' + y0.toFixed(1) + '" stroke-width="1.2" stroke-dasharray="4,3"/>';
     }
     // 均值虚线
     const yAvg = yS(avg);
@@ -202,7 +202,7 @@
     pts.forEach((p, k) => {
       if(p.value == null || isNaN(p.value)) return;
       const px = xS(k), py = yS(p.value);
-      svg += '<circle class="chart-pt" data-mid="' + esc(mid) + '" data-date="' + esc(p.date) + '" data-value="' + p.value + '" data-idx="' + k + '" cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="' + rDot + '" fill="#fff" stroke="' + color + '" stroke-width="' + Math.max(1, rDot * 0.6).toFixed(1) + '"><title>' + esc(p.date) + '：' + p.value + '</title></circle>';
+      svg += '<circle class="chart-pt" data-mid="' + esc(mid) + '" data-date="' + esc(p.date) + '" data-value="' + p.value + '" data-idx="' + k + '" cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="' + rDot + '" stroke="' + color + '" stroke-width="' + Math.max(1, rDot * 0.6).toFixed(1) + '"><title>' + esc(p.date) + '：' + p.value + '</title></circle>';
     });
     // x 轴时间标签（抽样显示）
     const step = Math.ceil(pts.length / 6);
@@ -618,10 +618,10 @@
     tip.querySelector('.tip-val').setAttribute('x', (bx + tw/2).toFixed(1));
     tip.querySelector('.tip-val').setAttribute('y', (Math.max(by,4) + 28).toFixed(1));
     tip.setAttribute('visibility', 'visible');
-    // 高亮当前数据点
-    svg.querySelectorAll('.chart-pt').forEach(c => c.setAttribute('fill', '#fff'));
+    // 高亮当前数据点（用内联 style，基色由 CSS .chart-pt{fill:var(--card)} 提供，深浅色均适配）
+    svg.querySelectorAll('.chart-pt').forEach(c => { c.style.fill = ''; });
     const pt = svg.querySelector('.chart-pt[data-idx="' + (el.getAttribute('data-idx') || '') + '"]');
-    if(pt) pt.setAttribute('fill', '#5b64f2');
+    if(pt) pt.style.fill = 'var(--indigo)';
   };
   window.macroChartTipHide = function(el){
     if(!el || !el.closest) return;
@@ -629,7 +629,7 @@
     if(!svg) return;
     const tip = svg.querySelector('.chart-tip');
     if(tip) tip.setAttribute('visibility', 'hidden');
-    svg.querySelectorAll('.chart-pt').forEach(c => c.setAttribute('fill', '#fff'));
+    svg.querySelectorAll('.chart-pt').forEach(c => { c.style.fill = ''; });
   };
 
   /* ================= 模块注册 ================= */
