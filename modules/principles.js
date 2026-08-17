@@ -557,7 +557,7 @@
   /* ================= 模块注册 ================= */
   Register.module({
     view: 'principles',
-    nav: { ico:'📜', label:'我的原则', group:'长期积累' },
+    nav: { ico:'📜', label:'我的原则', group:'重点目标' },
     seed: seed,
     ensure: ensure,
     render: renderPrinciple,

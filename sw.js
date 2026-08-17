@@ -6,7 +6,7 @@
  *   - 数据文件（JSON/CSV）→ 网络优先，失败回退缓存（离线可用）
  * 版本号仅在需要清空全部缓存时才需要修改。
  */
-const CACHE = 'goal-tracker-v3';
+const CACHE = 'goal-tracker-v4';
 
 const CORE = [
   './',
@@ -20,6 +20,9 @@ const CORE = [
   './icons/icon-512.png',
   './modules/dashboard.js',
   './modules/fitness.js',
+  './modules/habits.js',
+  './modules/review.js',
+  './modules/garden.js',
   './modules/job.js',
   './modules/reading.js',
   './modules/side.js',
