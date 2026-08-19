@@ -14,6 +14,7 @@
 |---|---|---|
 | `eastmoney.py` | 东方财富接口客户端（财务/利润/资产负债/现金流/行情/宏观） | - |
 | `fetch_financial.py` | 抓取公司财务数据 → 财务 CSV | `data/financial/` |
+| `fetch_prices.py` | 批量更新全部公司当前股价 → 写回 goal-tracker-data.json | 直接写 JSON |
 | `fetch_macro_all.py` | 统一宏观脚本（东财+akshare 全部指标，支持增量） | `data/macro/` |
 | `fetch_macro.py` | 东财宏观指标（GDP/CPI/PPI/PMI 等） | `data/macro/` |
 | `fetch_macro_ak.py` | akshare 宏观指标（债务/货币/国际） | `data/macro/` |
@@ -55,6 +56,28 @@ py fetch_financial.py --auto --json 其他数据.json --outdir 目标目录
 ```
 
 生成：`data/financial/{ticker}_{公司名}.csv`，与估值模块「⬇ 导出 / ⬆ 导入 CSV」完全兼容。
+
+### 1b. 更新当前股价（估值模块）→ 生成股价 CSV，浏览器批量导入
+
+无需在浏览器手动一个个更新股价。运行脚本批量拉取现价，生成一个「股价 CSV」到 `data/prices/当前股价.csv`，再在浏览器「⬆ 批量导入 CSV」选择它即可批量更新全部公司的 `currentPrice`（脚本不修改 JSON）：
+
+```bash
+# 从默认 data/goal-tracker-data.json 读取公司列表，生成股价 CSV
+py fetch_prices.py
+
+# 指定公司列表来源 JSON（根目录数据用这个）
+py fetch_prices.py --json ../goal-tracker-data.json
+
+# 指定输出目录 / 文件名
+py fetch_prices.py --outdir ../data/prices --out 当前股价.csv
+
+# 只预览将写入的价格，不写文件
+py fetch_prices.py --dry-run
+```
+
+- 使用东方财富批量行情接口（延时约 15 分钟），一次拉取全部公司现价。
+- 生成 `data/prices/当前股价.csv`（格式：`股票代码,公司,现价`），不改 JSON。
+- 导入：公司估值 → 「⬆ 批量导入 CSV」→ 选该 CSV，会自动按代码/名称匹配并更新 `currentPrice`。
 
 ### 2. 宏观数据（宏观模块）→ `data/macro/`
 

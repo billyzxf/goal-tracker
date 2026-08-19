@@ -365,15 +365,16 @@
     const totalPnl = totalMv - totalCost;
 
     let h = header('📈 公司估值', '追踪关注公司的财务数据与估值 · 共 ' + companies.length + ' 家',
+      '<button class="btn ghost sm" data-action="val.importPrices" title="导入最新股价 CSV（data/prices/当前股价.csv），批量更新全部公司现价">⬆ 导入股价</button>' +
       '<button class="btn ghost sm" data-action="val.exportAllCsv" title="导出全部公司的财务数据 CSV，文件名：{股票代码}_{公司名}.csv（如 688256.SH_寒武纪.csv）">⬇ 导出全部 CSV</button>' +
       '<button class="btn ghost sm" data-action="val.importAllCsv" title="批量导入财务数据 CSV，文件名：{股票代码}_{公司名}.csv，可多选。\n这些文件可由 scripts/fetch_financial.py 从东方财富自动抓取生成">⬆ 批量导入 CSV</button>' +
       '<button class="btn primary" style="background:var(--indigo)" data-action="val.addCompany">＋ 添加公司</button>');
 
     // —— 导入导出说明 ——
     h += '<div class="import-help">' +
-      '<b>📦 财务数据导入 / 导出</b>' +
-      '<span>文件：<code>{股票代码}_{公司名}.csv</code>，如 <code>688256.SH_寒武纪.csv</code></span>' +
-      '<span>获取方式：运行 <code>py scripts/fetch_financial.py --auto</code> 自动抓取全部公司财务数据到 <code>data/financial/</code>，然后「⬆ 批量导入 CSV」多选导入。</span>' +
+      '<b>📦 数据导入 / 导出</b>' +
+      '<span>📈 股价：运行 <code>py scripts/fetch_prices.py --json ../goal-tracker-data.json</code> 生成 <code>data/prices/当前股价.csv</code>，再点「⬆ 导入股价」批量更新现价。</span>' +
+      '<span>📊 财务：文件 <code>{股票代码}_{公司名}.csv</code>，如 <code>688256.SH_寒武纪.csv</code>；运行 <code>py scripts/fetch_financial.py --auto</code> 抓取后「⬆ 批量导入 CSV」。</span>' +
       '</div>';
 
     h += '<div class="val-summary-grid">';
@@ -891,6 +892,47 @@
     }
     return out;
   }
+  // 判断是否「股价 CSV」（# GoalTracker 股价数据 或 含 现价 列）
+  function isPriceCsv(csvLines){
+    for(const r of csvLines){
+      if(!r || !r.length) continue;
+      const first = String(r[0]).trim();
+      if(first.indexOf('# GoalTracker 股价数据') === 0) return true;
+    }
+    return false;
+  }
+  // 把「股价 CSV」解析为 [{ticker, name, price}]。格式：
+  //   # GoalTracker 股价数据
+  //   股票代码,公司,现价
+  //   688256.SH,寒武纪,1050.49
+  // 兼容列头顺序变动：按「列名」定位列索引（支持 股票代码/代码, 公司/名称, 现价/价格）
+  function csvToPrices(csvLines){
+    let idx = null;
+    const out = [];
+    for(const r of csvLines){
+      if(!r || !r.length) continue;
+      const cells = r.map(x => String(x == null ? '' : x).trim());
+      const first = cells[0];
+      // 识别列头行：第一格是「股票代码」或「代码」
+      if(idx === null && (first === '股票代码' || first === '代码')){
+        const i = { code:-1, name:-1, price:-1 };
+        cells.forEach((c, j) => {
+          if(c === '股票代码' || c === '代码') i.code = j;
+          else if(c === '公司' || c === '名称' || c === '股票名称') i.name = j;
+          else if(c === '现价' || c === '价格' || c === '最新价') i.price = j;
+        });
+        if(i.price >= 0){ idx = i; }
+        continue;
+      }
+      if(!idx) continue;                          // 尚未遇到列头
+      const code = cells[idx.code >= 0 ? idx.code : 0] || '';
+      if(!/^\d{6}(\.(SH|SZ|BJ))?$/.test(code)) continue;
+      const price = parseFloat((cells[idx.price] || '').replace(/[,\s]/g,''));
+      if(isNaN(price)) continue;
+      out.push({ ticker: code.toUpperCase(), name: cells[idx.name >= 0 ? idx.name : 1] || '', price });
+    }
+    return out;
+  }
   // 把解析出的 CSV 行转为财务数据数组（季度 + 指标值），跳过注释/表头
   function csvRowsToFinancials(csvLines){
     let headerIdx = -1, cols = null, ticker = null, cname = null;
@@ -945,6 +987,25 @@
         reader.onload = () => {
           try {
             const csvLines = parseCsvSimple(reader.result);
+            // 股价 CSV（# GoalTracker 股价数据 / 现价列）→ 批量更新 currentPrice
+            if(isPriceCsv(csvLines)){
+              const prices = csvToPrices(csvLines);
+              if(!prices.length){ errors++; }
+              else {
+                let updated = 0;
+                prices.forEach(p => {
+                  const target = DB.valuation.companies.find(x =>
+                    x.ticker === p.ticker || (p.name && x.name === p.name));
+                  if(!target) return;
+                  target.currentPrice = p.price;
+                  target.updated = dateStr();
+                  updated++;
+                });
+                if(updated){ matched++; } else { skipped++; }
+              }
+              if(matched + skipped + errors >= files.length){ save(); render(); alert('股价导入完成：更新 ' + matched + ' 家，跳过 ' + skipped + ' 家，失败 ' + errors + ' 个'); }
+              return;
+            }
             const parsed = csvRowsToFinancials(csvLines);
             if(!parsed || !parsed.financials.length){ errors++; return; }
             // 定位目标公司：优先按 CSV 内代码/名称匹配，其次用传进来的 targets
@@ -977,6 +1038,42 @@
             // 处理完后统一保存渲染
             if(matched + skipped + errors >= files.length){ save(); render(); alert('导入完成：成功 ' + matched + ' 个，跳过 ' + skipped + ' 个，失败 ' + errors + ' 个'); }
           } catch(e){ errors++; if(matched+skipped+errors >= files.length){ save(); render(); alert('导入完成：成功 ' + matched + ' 个，跳过 ' + skipped + ' 个，失败 ' + errors + ' 个'); } }
+        };
+        reader.readAsText(file, 'utf-8');
+      });
+    };
+    input.click();
+  }
+
+  // 专门导入「股价 CSV」（data/prices/当前股价.csv），批量更新各公司 currentPrice。
+  function importPriceFiles(){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,text/csv';
+    input.multiple = true;
+    input.onchange = () => {
+      const files = Array.from(input.files||[]);
+      if(!files.length) return;
+      let updated = 0, skipped = 0, bad = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const csvLines = parseCsvSimple(reader.result);
+            const prices = csvToPrices(csvLines);
+            if(!prices.length){ bad++; }
+            else {
+              prices.forEach(p => {
+                const target = DB.valuation.companies.find(x =>
+                  x.ticker === p.ticker || (p.name && x.name === p.name));
+                if(!target){ skipped++; return; }
+                target.currentPrice = p.price;
+                target.updated = dateStr();
+                updated++;
+              });
+            }
+          } catch(e){ bad++; }
+          if(updated + skipped + bad >= files.length){ save(); render(); alert('股价导入完成：更新 ' + updated + ' 家，跳过 ' + skipped + ' 家，失败 ' + bad + ' 个'); }
         };
         reader.readAsText(file, 'utf-8');
       });
@@ -1423,6 +1520,9 @@
       },
       'val.importAllCsv': () => {
         importCsvFiles(DB.valuation.companies);
+      },
+      'val.importPrices': () => {
+        importPriceFiles();
       },
       'val.editFin': el => {
         const c = findById(DB.valuation.companies, el.dataset.id); if(!c) return;
