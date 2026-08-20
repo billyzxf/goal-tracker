@@ -11,6 +11,56 @@
   const BOARD_CLS = VAL_BOARDS.reduce((m, b) => (m[b.key] = b.cls, m), {});
   // 顶部筛选 chips 用的板列表（不含空值选项，顺序固定）
   const VAL_BOARD_FILTER = ['主板', '科创板', '创业板'];
+  // 申万一级行业（东方财富行业分类）——用于行业筛选 chips 的顺序与配色
+  const VAL_INDUSTRIES = [
+    '电子', '计算机', '通信', '食品饮料', '汽车', '机械设备', '医药生物', '传媒',
+    '交通运输', '轻工制造', '有色金属', '基础化工', '电力设备', '公用事业', '商贸零售',
+    '家用电器', '建筑装饰', '国防军工', '环保', '银行', '非银金融', '石油石化',
+    '煤炭', '钢铁', '纺织服饰', '社会服务', '农林牧渔', '建筑材料', '综合',
+  ];
+  const INDUSTRY_CLS = VAL_INDUSTRIES.reduce((m, i, idx) => {
+    const cls = ['indigo','pink','amber','green','blue','orange','red','gray'];
+    m[i] = cls[idx % cls.length];
+    return m;
+  }, {});
+  // 公司行业映射（按 ticker → 申万一级行业），用于旧数据回填 industry 字段。
+  // 东方财富行业分类（申万一级）。
+  const COMPANY_INDUSTRY = {
+    '688256.SH':'电子', '300308.SZ':'通信', '300502.SZ':'通信', '688008.SH':'电子',
+    '688041.SH':'电子', '603019.SH':'计算机', '688012.SH':'电子', '688981.SH':'电子',
+    '002371.SZ':'电子', '603986.SH':'电子', '601138.SH':'电子', '002463.SZ':'电子',
+    '600183.SH':'电子', '000977.SZ':'计算机', '000938.SZ':'计算机', '600206.SH':'有色金属',
+    '605338.SH':'食品饮料', '601872.SH':'交通运输', '002884.SZ':'机械设备', '605099.SH':'轻工制造',
+    '002690.SZ':'机械设备', '603025.SH':'机械设备', '000915.SZ':'医药生物', '300770.SZ':'传媒',
+    '603871.SH':'交通运输', '300926.SZ':'汽车', '001380.SZ':'汽车', '300181.SZ':'医药生物',
+    '603173.SH':'机械设备', '605305.SH':'电力设备', '605499.SH':'食品饮料', '300628.SZ':'通信',
+    '603444.SH':'传媒', '000848.SZ':'食品饮料', '002867.SZ':'商贸零售', '000528.SZ':'机械设备',
+    '002648.SZ':'基础化工', '000791.SZ':'公用事业', '002957.SZ':'机械设备',
+  };
+  // 彼得·林奇 6 类公司分类（筛选 chips 顺序 / 配色 / 描述）
+  const VAL_LYNCH_TYPES = [
+    { key:'快速增长型', cls:'pink',   desc:'规模较小、高成长（年均 20%+），十倍股最可能出现的地方' },
+    { key:'稳定增长型', cls:'indigo', desc:'大型公司、年增约 10~12%，抗周期，收益看买入时机与价格' },
+    { key:'缓慢增长型', cls:'gray',   desc:'老牌巨头、年增仅 2~4%，主要靠股息，投资价值有限' },
+    { key:'周期型',     cls:'amber',  desc:'业绩随经济周期波动，需把握买卖时机，周期顶峰买入最危险' },
+    { key:'困境反转型', cls:'red',    desc:'遭受打击濒临破产但可能翻身，风险最高回报也可能最丰厚' },
+    { key:'隐蔽资产型', cls:'green',  desc:'拥有价值巨大但未被市场发现的隐蔽资产，需深入理解并耐心等待' },
+  ];
+  const LYNCH_TYPE_CLS = VAL_LYNCH_TYPES.reduce((m, t) => (m[t.key] = t.cls, m), {});
+  const LYNCH_TYPE_DESC = VAL_LYNCH_TYPES.reduce((m, t) => (m[t.key] = t.desc, m), {});
+  // 公司林奇类型映射（按 ticker → 6 类之一），用于旧数据回填 companyType。
+  const COMPANY_LYNCH_TYPE = {
+    '688256.SH':'快速增长型', '300308.SZ':'快速增长型', '300502.SZ':'快速增长型', '688008.SH':'快速增长型',
+    '688041.SH':'快速增长型', '603019.SH':'快速增长型', '688012.SH':'快速增长型', '688981.SH':'快速增长型',
+    '002371.SZ':'快速增长型', '603986.SH':'快速增长型', '601138.SH':'稳定增长型', '002463.SZ':'快速增长型',
+    '600183.SH':'快速增长型', '000977.SZ':'快速增长型', '000938.SZ':'稳定增长型', '600206.SH':'稳定增长型',
+    '605338.SH':'稳定增长型', '601872.SH':'周期型', '002884.SZ':'稳定增长型', '605099.SH':'稳定增长型',
+    '002690.SZ':'稳定增长型', '603025.SH':'稳定增长型', '000915.SZ':'稳定增长型', '300770.SZ':'稳定增长型',
+    '603871.SH':'快速增长型', '300926.SZ':'快速增长型', '001380.SZ':'稳定增长型', '300181.SZ':'快速增长型',
+    '603173.SH':'快速增长型', '605305.SH':'快速增长型', '605499.SH':'快速增长型', '300628.SZ':'稳定增长型',
+    '603444.SH':'稳定增长型', '000848.SZ':'缓慢增长型', '002867.SZ':'稳定增长型', '000528.SZ':'周期型',
+    '002648.SZ':'周期型', '000791.SZ':'缓慢增长型', '002957.SZ':'快速增长型',
+  };
   // 基于股票代码启发式推断板（仅在 board 字段缺失时兜底用一次）
   function inferBoard(ticker){
     if(!ticker) return '';
@@ -353,6 +403,18 @@
     // 兼容：旧 state.valMarket 值（A股/港股/美股/其他）如果还在，回退为'全部'，避免没有 chip active
     if(!['全部', ...VAL_BOARD_FILTER].includes(state.valBoard)) state.valBoard = '全部';
     if(state.valBoard !== '全部') list = list.filter(c => c.board === state.valBoard);
+    // 按行业筛选：state.valIndustry='全部' 显示全部；否则只显示对应行业（c.industry 匹配的）
+    const usedIndustries = [...new Set(companies.map(c => c.industry).filter(Boolean))];
+    if(state.valIndustry && state.valIndustry !== '全部' && !usedIndustries.includes(state.valIndustry)){
+      state.valIndustry = '全部';   // 行业列表中已不存在的筛选值回退为全部
+    }
+    if(state.valIndustry && state.valIndustry !== '全部') list = list.filter(c => c.industry === state.valIndustry);
+    // 按林奇公司类型筛选：state.valLynchType='全部' 显示全部；否则只显示对应类型（c.companyType 匹配的）
+    const usedLynch = [...new Set(companies.map(c => c.companyType).filter(Boolean))];
+    if(state.valLynchType && state.valLynchType !== '全部' && !usedLynch.includes(state.valLynchType)){
+      state.valLynchType = '全部';
+    }
+    if(state.valLynchType && state.valLynchType !== '全部') list = list.filter(c => c.companyType === state.valLynchType);
 
     let totalPos = 0, totalCost = 0, totalRealized = 0, totalMv = 0;
     companies.forEach(c => {
@@ -385,8 +447,23 @@
     h += '<div class="val-stat"><div class="vs-label">已实现盈亏</div><div class="vs-value ' + (totalRealized >= 0 ? 'up' : 'down') + '">' + fmtMoney(totalRealized) + '</div></div>';
     h += '</div>';
 
-    h += '<div class="chips" style="margin-bottom:16px">' +
+    h += '<div class="chips" style="margin-bottom:10px">' +
       ['全部'].concat(VAL_BOARD_FILTER).map(b => '<button class="chip ' + (state.valBoard === b ? 'active' : '') + '" data-action="val.fBoard" data-v="' + b + '">' + b + (b === '全部' ? '（' + companies.length + '）' : '（' + companies.filter(c => c.board === b).length + '）') + '</button>').join('') + '</div>';
+    // 行业筛选 chips（按申万一级行业顺序，只显示实际存在的行业）
+    const indList = VAL_INDUSTRIES.filter(i => usedIndustries.includes(i)).concat(
+      usedIndustries.filter(i => !VAL_INDUSTRIES.includes(i)));   // 未在标准列表中的行业附加在后面
+    h += '<div class="chips" style="margin-bottom:16px">' +
+      '<button class="chip ' + (state.valIndustry === '全部' || !state.valIndustry ? 'active' : '') + '" data-action="val.fIndustry" data-v="全部">全部（' + companies.length + '）</button>' +
+      indList.map(i => '<button class="chip ' + (state.valIndustry === i ? 'active' : '') + '" data-action="val.fIndustry" data-v="' + esc(i) + '">' + i + '（' + companies.filter(c => c.industry === i).length + '）</button>').join('') + '</div>';
+    // 林奇公司类型筛选 chips（按 VAL_LYNCH_TYPES 顺序，只显示实际存在的类型）
+    const usedLynchList = VAL_LYNCH_TYPES.map(t => t.key).filter(k => usedLynch.includes(k)).concat(
+      usedLynch.filter(k => !VAL_LYNCH_TYPES.some(t => t.key === k)));
+    h += '<div class="chips" style="margin-bottom:16px">' +
+      '<button class="chip ' + (state.valLynchType === '全部' || !state.valLynchType ? 'active' : '') + '" data-action="val.fLynch" data-v="全部">全部（' + companies.length + '）</button>' +
+      usedLynchList.map(k => {
+        const desc = LYNCH_TYPE_DESC[k] ? ' title="' + esc(LYNCH_TYPE_DESC[k]) + '"' : '';
+        return '<button class="chip ' + (state.valLynchType === k ? 'active' : '') + '" data-action="val.fLynch" data-v="' + esc(k) + '"' + desc + '>' + k + '（' + companies.filter(c => c.companyType === k).length + '）</button>';
+      }).join('') + '</div>';
 
     if(!list.length){ h += '<div class="card"><div class="empty">该市场下暂无公司，点击右上角添加</div></div>'; return h; }
 
@@ -425,6 +502,8 @@
           '<span class="cc-name" data-action="val.openCompany" data-id="' + c.id + '">' + esc(c.name) + '</span>' +
           ' <span class="badge ' + marketBadge + '">' + esc(c.market||'A股') + '</span>' +
           (c.market === 'A股' && c.board ? ' <span class="badge ' + (BOARD_CLS[c.board]||'gray') + '">' + esc(c.board) + '</span>' : '') +
+          (c.industry ? ' <span class="badge ' + (INDUSTRY_CLS[c.industry]||'gray') + '">' + esc(c.industry) + '</span>' : '') +
+          (c.companyType ? ' <span class="badge ' + (LYNCH_TYPE_CLS[c.companyType]||'gray') + '" title="' + esc(LYNCH_TYPE_DESC[c.companyType]||'') + '">' + esc(c.companyType) + '</span>' : '') +
           '<div class="cc-meta">' + esc(c.ticker||'') + (c.sector ? ' · ' + esc(c.sector) : '') + (c.currency ? ' · ' + c.currency : '') + '</div>' +
         '</div><div class="q-actions">' +
           '<button class="icon-btn" title="编辑" data-action="val.editCompany" data-id="' + c.id + '">✎</button>' +
@@ -444,7 +523,7 @@
     const pnlPct = pos.cost > 0 ? pnl / pos.cost * 100 : 0;
 
     let h = '<span class="back-link" data-action="val.back">← 返回公司列表</span>';
-    h += '<div class="page-head"><div><h1>' + esc(c.name) + (c.market === 'A股' && c.board ? ' <span class="badge ' + (BOARD_CLS[c.board]||'gray') + '">' + esc(c.board) + '</span>' : '') + '</h1><div class="muted">' + esc(c.ticker||'') + ' · ' + esc(c.market||'') + (c.market === 'A股' && c.board ? ' · ' + esc(c.board) : '') + ' · ' + esc(c.sector||'') + (c.currency ? ' · ' + c.currency : '') + '</div></div>' +
+    h += '<div class="page-head"><div><h1>' + esc(c.name) + (c.market === 'A股' && c.board ? ' <span class="badge ' + (BOARD_CLS[c.board]||'gray') + '">' + esc(c.board) + '</span>' : '') + (c.industry ? ' <span class="badge ' + (INDUSTRY_CLS[c.industry]||'gray') + '">' + esc(c.industry) + '</span>' : '') + (c.companyType ? ' <span class="badge ' + (LYNCH_TYPE_CLS[c.companyType]||'gray') + '" title="' + esc(LYNCH_TYPE_DESC[c.companyType]||'') + '">' + esc(c.companyType) + '</span>' : '') + '</h1><div class="muted">' + esc(c.ticker||'') + ' · ' + esc(c.market||'') + (c.market === 'A股' && c.board ? ' · ' + esc(c.board) : '') + (c.industry ? ' · ' + esc(c.industry) : '') + (c.companyType ? ' · ' + esc(c.companyType) : '') + ' · ' + esc(c.sector||'') + (c.currency ? ' · ' + c.currency : '') + '</div></div>' +
       '<div class="head-actions"><button class="btn ghost sm" data-action="val.editCompany" data-id="' + c.id + '">✎ 编辑</button>' +
       '<button class="btn danger-ghost sm" data-action="val.delCompany" data-id="' + c.id + '">🗑 删除</button></div></div>';
 
@@ -1342,6 +1421,10 @@
         const inferred = inferBoard(c.ticker);
         if(inferred) c.board = inferred;
       }
+      // 旧数据无 industry 字段：按 ticker 从映射表回填申万一级行业
+      if(!c.industry && c.ticker && COMPANY_INDUSTRY[c.ticker]) c.industry = COMPANY_INDUSTRY[c.ticker];
+      // 旧数据无 companyType 字段：按 ticker 从映射表回填林奇公司类型
+      if(!c.companyType && c.ticker && COMPANY_LYNCH_TYPE[c.ticker]) c.companyType = COMPANY_LYNCH_TYPE[c.ticker];
       // 旧数据无 research 字段，初始化为空串（避免显示 undefined）
       if(c.research === undefined || c.research === null) c.research = '';
       // 旧数据无 totalShares 字段，初始化为 0（用户可手动填入真实总股本）
@@ -1408,6 +1491,8 @@
     render: renderValuation,
     actions: {
       'val.fBoard': el => { state.valBoard = el.dataset.v; render(); },
+      'val.fIndustry': el => { state.valIndustry = el.dataset.v; render(); },
+      'val.fLynch': el => { state.valLynchType = el.dataset.v; render(); },
       'val.back': () => { state.valCompanyId = null; render(); },
       'val.openCompany': el => { state.valCompanyId = el.dataset.id; render(); window.scrollTo(0,0); },
       'val.addCompany': () => openModal('添加关注公司',
@@ -1415,7 +1500,9 @@
         '<div class="field" style="flex:none;width:160px"><label>代码</label><input type="text" name="ticker" placeholder="如：00700.HK"></div></div>' +
         '<div class="quick-row"><div class="field" style="flex:1"><label>市场</label><select name="market" data-board-toggle>' + VAL_MARKETS.map(m => '<option>' + m + '</option>').join('') + '</select></div>' +
         '<div class="field" style="flex:1;min-width:140px" data-board-field><label>A 股板块</label><select name="board">' + VAL_BOARDS.map(b => '<option value="' + esc(b.key) + '">' + esc(b.label) + '</option>').join('') + '</select></div>' +
-        '<div class="field" style="flex:1"><label>行业 / 板块</label><input type="text" name="sector" placeholder="如：互联网科技"></div>' +
+        '<div class="field" style="flex:1"><label>行业分类</label><select name="industry"><option value="">（未指定）</option>' + VAL_INDUSTRIES.map(i => '<option>' + i + '</option>').join('') + '</select></div>' +
+        '<div class="field" style="flex:1"><label>林奇公司类型</label><select name="companyType"><option value="">（未指定）</option>' + VAL_LYNCH_TYPES.map(t => '<option value="' + esc(t.key) + '" title="' + esc(t.desc) + '">' + t.key + '</option>').join('') + '</select></div>' +
+        '<div class="field" style="flex:1"><label>行业 / 细分</label><input type="text" name="sector" placeholder="如：光模块"></div>' +
         '<div class="field" style="flex:none;width:120px"><label>货币</label><input type="text" name="currency" placeholder="HKD" value="CNY"></div></div>' +
         '<div class="quick-row"><div class="field" style="flex:1"><label>当前股价</label><input type="number" step="0.01" name="currentPrice" placeholder="0.00"></div>' +
         '<div class="field" style="flex:1"><label>总股本（亿股）</label><input type="number" step="0.0001" name="totalShares" placeholder="如：4.21"></div></div>' +
@@ -1429,7 +1516,9 @@
           '<div class="field" style="flex:none;width:160px"><label>代码</label><input type="text" name="ticker" value="' + esc(c.ticker||'') + '"></div></div>' +
           '<div class="quick-row"><div class="field" style="flex:1"><label>市场</label><select name="market" data-board-toggle>' + VAL_MARKETS.map(m => '<option' + (c.market === m ? ' selected' : '') + '>' + m + '</option>').join('') + '</select></div>' +
           '<div class="field" style="flex:1;min-width:140px" data-board-field><label>A 股板块</label><select name="board">' + VAL_BOARDS.map(b => '<option value="' + esc(b.key) + '"' + (c.board === b.key ? ' selected' : '') + '>' + esc(b.label) + '</option>').join('') + '</select></div>' +
-          '<div class="field" style="flex:1"><label>行业 / 板块</label><input type="text" name="sector" value="' + esc(c.sector||'') + '"></div>' +
+          '<div class="field" style="flex:1"><label>行业分类</label><select name="industry"><option value="">（未指定）</option>' + VAL_INDUSTRIES.map(i => '<option' + (c.industry === i ? ' selected' : '') + '>' + i + '</option>').join('') + '</select></div>' +
+          '<div class="field" style="flex:1"><label>林奇公司类型</label><select name="companyType"><option value="">（未指定）</option>' + VAL_LYNCH_TYPES.map(t => '<option value="' + esc(t.key) + '"' + (c.companyType === t.key ? ' selected' : '') + ' title="' + esc(t.desc) + '">' + t.key + '</option>').join('') + '</select></div>' +
+          '<div class="field" style="flex:1"><label>行业 / 细分</label><input type="text" name="sector" value="' + esc(c.sector||'') + '"></div>' +
           '<div class="field" style="flex:none;width:120px"><label>货币</label><input type="text" name="currency" value="' + esc(c.currency||'CNY') + '"></div></div>' +
           '<div class="quick-row"><div class="field" style="flex:1"><label>当前股价</label><input type="number" step="0.01" name="currentPrice" value="' + (c.currentPrice||'') + '"></div>' +
           '<div class="field" style="flex:1"><label>总股本（亿股）</label><input type="number" step="0.0001" name="totalShares" value="' + (c.totalShares || '') + '" placeholder="如：4.21"></div></div>' +
@@ -1662,7 +1751,7 @@
         // 板块只对 A 股有意义：港/美/其他 一律置空
         const board = market === 'A股' ? (fd.get('board') || '') : '';
         const data = { name:fd.get('name'), ticker:fd.get('ticker')||'', market, board,
-          sector:fd.get('sector')||'', currency:fd.get('currency')||'CNY', currentPrice:parseFloat(fd.get('currentPrice'))||0, totalShares:parseFloat(fd.get('totalShares'))||0, note:fd.get('note')||'' };
+          industry:fd.get('industry')||'', companyType:fd.get('companyType')||'', sector:fd.get('sector')||'', currency:fd.get('currency')||'CNY', currentPrice:parseFloat(fd.get('currentPrice'))||0, totalShares:parseFloat(fd.get('totalShares'))||0, note:fd.get('note')||'' };
         if(id){ Object.assign(findById(DB.valuation.companies, id), data); }
         else DB.valuation.companies.push(Object.assign({ id:uid(), financials:[], valuations:[], investments:[], research:'' }, data));
         save(); closeModal(); render();

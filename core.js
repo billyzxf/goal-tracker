@@ -277,7 +277,7 @@ function refreshBackupReminder(){
 /* ================= 全局状态 =================
  * 约定：模块的状态键使用「模块前缀.子键」命名（如 job.tag），避免键名冲突。
  */
-const state = { view:'dashboard', jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null };
+const state = { view:'dashboard', jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valIndustry:'全部', valLynchType:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null };
 
 /* ================= 通用渲染片段（组件） ================= */
 function ring(pct, color, size){
