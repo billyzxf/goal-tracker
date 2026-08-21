@@ -3,7 +3,8 @@
 从东方财富抓取 A 股公司财务数据，输出为 GoalTracker 估值模块可导入的 CSV。
 
 数据来源（东方财富公开接口，免 key）：
-  ① RPT_F10_FINANCE_MAINFINADATA  核心财务指标（ROE/毛利率/净利率/负债率/总资产/营收/现金流/扣非等）
+  ① RPT_F10_FINANCE_MAINFINADATA  核心财务指标（ROE/毛利率/净利率/负债率/总资产/营收/现金流/扣非等，
+                                    含营收同比% TOTALOPERATEREVETZ、扣非净利润同比% KCFJCXSYJLRTZ）
   ② RPT_F10_FINANCE_GINCOME       利润表（营收 / 营业成本 → 毛利润 / 归母净利润）
 
 输出文件（data/ 目录）：
@@ -43,10 +44,11 @@ except Exception:
 from eastmoney import EastmoneyClient, to_yi, _norm_report_date
 
 # 输出文件表头（与 valuation.js 的 METRICS 顺序一致）
+# 营收同比(%) 紧跟在营业收入(亿)后，扣非净利润同比(%) 紧跟在扣非净利润(亿)后。
 OUT_COLUMNS = [
-    'totalAssets', 'equity', 'revenue', 'grossProfit', 'netProfit',
-    'deductedNetProfit', 'opCashFlow', 'capex', 'roe', 'grossMargin', 'netMargin',
-    'assetLiabRatio', 'totalAssetTurnover',
+    'totalAssets', 'equity', 'revenue', 'revenueYoy', 'grossProfit', 'netProfit',
+    'deductedNetProfit', 'deductedNetProfitYoy', 'opCashFlow', 'capex', 'roe',
+    'grossMargin', 'netMargin', 'assetLiabRatio', 'totalAssetTurnover',
 ]
 
 # 东财字段 → (目标列, 东财字段名, 是否"元→亿"换算)。
@@ -58,7 +60,9 @@ MAIN_MAP = [
     ('totalAssets',          'TOTAL_ASSETS_PK',    True),   # 总资产(元→亿)
     ('equity',               'TOTAL_EQUITY_PK',    True),   # 所有者权益(元→亿)
     ('revenue',              'OPERATE_INCOME_PK',  True),   # 营业收入(元→亿)
+    ('revenueYoy',           'TOTALOPERATEREVETZ', False),  # 营业总收入同比(%)，已是百分比，直接用
     ('deductedNetProfit',    'KCFJCXSYJLR',        True),   # 扣非净利润(元→亿)
+    ('deductedNetProfitYoy', 'KCFJCXSYJLRTZ',      False),  # 扣非净利润同比(%)，已是百分比，直接用
     ('opCashFlow',           'NETCASH_OPERATE_PK', True),   # 经营现金流净额(元→亿)
     ('roe',                  'ROEJQ',              False),  # 净资产收益率(%)
     ('grossMargin',          'XSMLL',              False),  # 毛利率(%)
