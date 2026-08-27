@@ -14,6 +14,7 @@
 |---|---|---|
 | `eastmoney.py` | 东方财富接口客户端（财务/利润/资产负债/现金流/行情/宏观） | - |
 | `fetch_financial.py` | 抓取公司财务数据 → 财务 CSV | `data/financial/` |
+| `fetch_earnings.py` | 按披露日期批量抓取最新财报 → 财报跟踪 CSV | `data/earnings/` |
 | `fetch_prices.py` | 批量更新全部公司当前股价 → 写回 goal-tracker-data.json | 直接写 JSON |
 | `fetch_macro_all.py` | 统一宏观脚本（东财+akshare 全部指标，支持增量） | `data/macro/` |
 | `fetch_macro.py` | 东财宏观指标（GDP/CPI/PPI/PMI 等） | `data/macro/` |
@@ -26,6 +27,7 @@
 ```
 data/
 ├── financial/     # 各公司财务数据 CSV（{ticker}_{公司名}.csv）
+├── earnings/      # 财报跟踪 CSV（财报跟踪_YYYYMMDD.csv）
 ├── macro/         # 宏观经济数据 CSV（宏观经济_全部数据.csv 等）
 ├── forecast/      # 盈利预测 CSV（盈利预测_{代码}_{公司名}.csv）
 ├── goal-tracker-data.json   # 主数据文件（可被脚本直接更新）
@@ -58,6 +60,79 @@ py fetch_financial.py --auto --json 其他数据.json --outdir 目标目录
 生成：`data/financial/{ticker}_{公司名}.csv`，与估值模块「⬇ 导出 / ⬆ 导入 CSV」完全兼容。
 
 CSV 包含的列（顺序固定，与前端一致）：总资产、所有者权益、营业收入、**营收同比%**、毛利润、净利润、扣非净利润、**扣非净利润同比%**、经营现金流、资本开支、ROE、毛利率、净利率、资产负债率、总资产周转率。同比字段取自东方财富核心财务指标接口的累计值同比（如 Q2 = 上半年累计 vs 去年同期上半年）。
+
+### 1a. 财报跟踪（财报跟踪模块）→ `data/earnings/`
+
+按「财报实际披露日期」批量抓取最新财报，生成汇总 CSV，供前端「📊 财报跟踪」模块导入后排序 / 筛选（跟踪超预期公司）。
+
+**三种获取来源**：
+
+```bash
+# ① 关注列表（默认）：从 goal-tracker-data.json 读关注公司，取每只最新一期财报
+py fetch_earnings.py
+
+# ② 指定关注公司列表（逗号分隔，可带或不带 .SH/.SZ 后缀；PowerShell 下务必加引号）
+py fetch_earnings.py --codes "601138,300308,000977"
+py fetch_earnings.py --codes "601138.SH,300308.SZ"
+
+# ③ 按披露日期获取【全部】公司（不限股票列表）：指定日期/范围内发布财报的公司
+py fetch_earnings.py --date 2026-08-12            # 单日
+py fetch_earnings.py --date 2026-08-12 --date 2026-08-15   # 两个单日
+py fetch_earnings.py --start 2026-08-01 --end 2026-08-31   # 日期范围
+```
+
+**常用筛选与增强参数**（可与上述来源组合）：
+
+```bash
+# 只保留营收同比 ≥ 20% 的公司（默认不过滤）
+py fetch_earnings.py --start 2026-08-01 --end 2026-08-31 --min-yoy 20
+
+# 按披露日期获取时【默认仅 A 股主板】（上证主板 60 开头 / 深证主板 00 开头）
+# 如需包含其他板块：
+py fetch_earnings.py --date 2026-08-12 --include-gem    # +创业板
+py fetch_earnings.py --date 2026-08-12 --include-star   # +科创板
+py fetch_earnings.py --date 2026-08-12 --include-bj     # +北交所
+py fetch_earnings.py --date 2026-08-12 --all-board      # 全部板块
+
+# 指定市场：SH(沪)/SZ(深)/BJ(北交)，默认全部市场
+py fetch_earnings.py --date 2026-08-12 --market SH,SZ
+
+# 分类标签：写入文件名后缀（如 电子 / 8月 / 自选），同一日期可存多个分类文件
+py fetch_earnings.py --date 2026-08-12 --category 电子
+
+# 按日期获取时最多处理 N 家（0=不限）
+py fetch_earnings.py --date 2026-08-12 --limit 100
+
+# 快模式：跳过补齐扣非/经营现金流/资本开支（更快，仅业绩报表自带指标）
+py fetch_earnings.py --date 2026-08-12 --no-full
+
+# 按日期获取时同时拉取当年一致预期（较慢，仅对关注列表默认开启）
+py fetch_earnings.py --date 2026-08-12 --consensus
+
+# 包含新三板/三板等非 A 股
+py fetch_earnings.py --date 2026-08-12 --all-market
+```
+
+**CSV 命名（按财报发布日期 + 类别，支持存多个、互不覆盖）**：
+
+```
+财报跟踪_20260827.csv              # 关注列表 / 默认（今日日期）
+财报跟踪_20260827_自选.csv         # --codes 指定公司（追加"_自选"）
+财报跟踪_20260812.csv              # --date 单日（按披露日期）
+财报跟踪_20260812_电子.csv         # 单日 + --category 分类
+财报跟踪_20260801-20260831.csv     # --start/--end 日期范围
+```
+
+**CSV 列**：股票代码、公司名称、行业、板块、林奇类型、披露日期、报告期、季度、营业收入(亿)、**营收同比%**、毛利润(亿)、净利润(亿)、扣非净利润(亿)、**扣非净利同比%**、经营现金流(亿)、资本开支(亿)、ROE、毛利率，以及**当年一致预期**（财报发布年份）：预期营收(亿)、预期净利(亿)、预期营收同比%、预期净利同比%。
+
+**导入**：前端「财报跟踪」→ 「⬆ 导入财报 CSV」→ 可多选文件分别导入分析。支持按任意指标排序（点击列头）、按行业/板块筛选、一键剔除营收同比 < 20% 的公司；「超预期」列 = 实际营收同比 − 预期营收同比（正=财报超预期）。
+
+> 说明：
+> - 披露日期取自东方财富业绩报表接口（`RPT_LICO_FN_CPD`），即财报实际发布日。
+> - 按日期获取的"更多公司"会通过 `RPT_F10_BASIC_ORGINFO` 批量补充行业/板块标签，与关注列表公司展示一致。
+> - 完整指标（扣非/经营现金流/资本开支/毛利润）需逐公司补齐，默认开启（`--no-full` 可跳过）；一致预期默认只对关注列表/指定公司拉取，按日期获取需 `--consensus` 显式开启。
+> - 一致预期取自东财 F10 盈利预测接口（`fetch_profit_forecast.py` 同源），按财报发布年份取当年券商一致预期。
+> - 指定公司列表来源 JSON / 输出目录：`py fetch_earnings.py --json 其他数据.json --outdir 目标目录`。
 
 ### 1b. 更新当前股价（估值模块）→ 生成股价 CSV，浏览器批量导入
 
@@ -136,7 +211,8 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 ## 导入到 GoalTracker
 
 1. **财务数据**：公司估值 → 该公司详情 → 「财务数据」→ 「⬆ 导入 CSV」→ 选 `data/financial/{ticker}_{名}.csv`
-2. **宏观数据**：宏观经济 → 顶部「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
+2. **财报跟踪**：财报跟踪 → 「⬆ 导入财报 CSV」→ 可多选 `data/earnings/` 下的多个 CSV（不同日期/类别分别导入分析）
+3. **宏观数据**：宏观经济 → 顶部「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
    - 导出：「⬇ 导出全部」→ `宏观经济_全部数据.csv`
 3. **盈利预测**：公司估值 → 该公司详情 → 「📈 盈利预测」→ 「⬆ 导入预测」→ 选 `data/forecast/盈利预测_{代码}_{名}.csv`
    - 导出：「⬇ 导出预测」

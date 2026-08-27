@@ -185,6 +185,99 @@ class EastmoneyClient:
         """业绩预告（预测净利润区间/同比幅度等 27 字段）。"""
         return self._datacenter('RPT_PUBLIC_OP_NEWPREDICT', secu, page_size=periods)
 
+    def finance_earnings(self, secu, periods=8):
+        """业绩报表（RPT_LICO_FN_CPD）：最新一期业绩 + 实际披露日期(NOTICE_DATE)。
+        提供营收/净利/同比/ROE/毛利率等，且带财报实际发布日期，用于「财报跟踪」。
+        secu 需带后缀（如 601138.SH）；内部按 6 位代码查询。"""
+        code6 = str(secu).split('.')[0]
+        params = {
+            'reportName': 'RPT_LICO_FN_CPD',
+            'columns': 'ALL',
+            'filter': '(SECURITY_CODE="%s")' % code6,
+            'pageNumber': 1,
+            'pageSize': periods,
+            'sortTypes': '-1',
+            'sortColumns': 'REPORTDATE',
+            'source': 'HSF10',
+            'client': 'PC',
+        }
+        j = self._get(DATACENTER, params)
+        result = (j or {}).get('result') or {}
+        return result.get('data') or []
+
+    def finance_earnings_by_date(self, date_from=None, date_to=None, page_size=200, max_pages=100):
+        """按「披露日期」批量获取业绩报表（不限股票列表）。
+        返回该披露日期/区间内发布财报的**全部公司**最新一期数据（含 NOTICE_DATE/QDATE/营收/净利/同比等）。
+        date_from/date_to：'YYYY-MM-DD'，单日可只传 date_from（=date_to）。
+        自动分页直到取完；返回 (data_list, count)。"""
+        conds = []
+        if date_from:
+            conds.append("(NOTICE_DATE>='%s')" % date_from)
+        if date_to:
+            conds.append("(NOTICE_DATE<='%s')" % date_to)
+        if not conds:
+            raise ValueError('finance_earnings_by_date 需要至少一个日期条件')
+        filt = ''.join(conds)
+        all_data, page = [], 1
+        while page <= max_pages:
+            params = {
+                'reportName': 'RPT_LICO_FN_CPD',
+                'columns': 'ALL',
+                'filter': filt,
+                'pageNumber': page,
+                'pageSize': page_size,
+                'sortTypes': '-1',
+                'sortColumns': 'NOTICE_DATE',
+                'source': 'HSF10',
+                'client': 'PC',
+            }
+            j = self._get(DATACENTER, params)
+            result = (j or {}).get('result') or {}
+            data = result.get('data') or []
+            if not data:
+                break
+            all_data.extend(data)
+            total = result.get('count')
+            if total is not None and len(all_data) >= int(total):
+                break
+            page += 1
+        return all_data, (result or {}).get('count')
+
+    def basic_orginfo(self, codes):
+        """批量查公司基础资料/行业分类（RPT_F10_BASIC_ORGINFO）。
+        codes: 带后缀的股票代码列表，如 ['601138.SH','300308.SZ']。
+        返回 {code6: {industry, board}}；industry 为东财三级行业第一级（如"电子"），board 为市场（如"上交所主板A股"）。"""
+        out = {}
+        # 分批（单批 ≤ 50）
+        for i in range(0, len(codes), 50):
+            batch = codes[i:i + 50]
+            code6s = [str(c).split('.')[0] for c in batch]
+            filt = '(SECUCODE in ("%s"))' % '","'.join(batch)
+            params = {
+                'reportName': 'RPT_F10_BASIC_ORGINFO',
+                'columns': 'ALL',
+                'filter': filt,
+                'pageNumber': 1,
+                'pageSize': 200,
+                'source': 'HSF10',
+                'client': 'PC',
+            }
+            try:
+                j = self._get(DATACENTER, params)
+                data = ((j or {}).get('result') or {}).get('data') or []
+            except Exception:   # noqa: BLE001
+                continue
+            for r in data:
+                code6 = str(r.get('SECUCODE') or '').split('.')[0]
+                if not code6:
+                    continue
+                lvl = (r.get('BOARD_NAME_LEVEL') or '').split('-')[0].strip()
+                out[code6] = {
+                    'industry': lvl or '',
+                    'board': (r.get('SECURITY_TYPE') or '').strip(),
+                }
+        return out
+
     # ============ 宏观接口 ============
     def macro_gdp(self, size=50):
         """GDP（总量/分产业/同比，10 字段）。"""
