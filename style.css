@@ -124,6 +124,16 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 14px;font-size:12px;color:var(--ink2);font-weight:600}
 .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* 财报跟踪：自定义数值筛选条（紧凑单行） */
+.earn-filterbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.earn-filterbar select,.earn-filterbar input[type=number]{
+  width:auto;flex:none;padding:4px 8px;font-size:12px;border-radius:8px;border:1px solid var(--line);
+  background:var(--input-bg);color:var(--ink);outline:none;line-height:1.4;
+}
+.earn-filterbar select:focus,.earn-filterbar input[type=number]:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(14,169,123,.12)}
+.earn-filterbar input[type=number]{width:84px}
+.earn-filterbar .chip{padding:4px 10px}
+.earn-filterbar .hint{font-size:12px;color:var(--ink2)}
 .progress{height:8px;border-radius:99px;background:var(--gray-bg);overflow:hidden}
 .progress > i{display:block;height:100%;border-radius:99px;background:var(--green);transition:width .3s}
 .empty{padding:26px;text-align:center;color:var(--ink2);font-size:13px;background:var(--bg2);border:1px dashed var(--line);border-radius:12px}
@@ -252,6 +262,18 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .val-table tr:hover td{background:var(--bg2)}
 .val-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .val-table .actions-cell{text-align:right;white-space:nowrap}
+/* 宽屏自适应表格（财报跟踪等多列表格）：
+ *   - 主内容区 #main 默认 max-width:1220px 会限制表格宽度；当页面含宽表时解除该限制，
+ *     让内容区随浏览器窗口变宽。
+ *   - 表格 width:100% + min-width:max-content：
+ *       浏览器足够宽（内容总宽 < 容器）→ width:100% 生效，表格填满容器整行、不留空白；
+ *       内容总宽 > 容器（窄屏）→ min-width:max-content 生效，表格按列内容自然撑开，由外层横向滚动。
+ *   - white-space:nowrap 保证列内容不换行，列宽按内容宽度计算，避免被压缩。 */
+#main:has(.wide-table-wrap){max-width:none}
+.wide-table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+.wide-table-wrap > .val-table{width:100%;min-width:max-content}
+.wide-table-wrap > .val-table th,
+.wide-table-wrap > .val-table td{white-space:nowrap}
 .method-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;font-weight:700;white-space:nowrap}
 .m-pe{background:var(--indigo-bg);color:var(--indigo)}
 .m-pb{background:var(--green-bg);color:var(--green-dk)}

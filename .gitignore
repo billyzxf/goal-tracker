@@ -30,3 +30,6 @@ goal-tracker-data*.json
 
 # 本地脚本产物
 *.ipynb_checkpoints
+
+# IDE config dir
+.codebuddy/

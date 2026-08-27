@@ -29,6 +29,7 @@ const CORE = [
   './modules/threshold.js',
   './modules/val-core.js',
   './modules/valuation.js',
+  './modules/earnings.js',
   './modules/macro.js',
   './modules/principles.js'
 ];
