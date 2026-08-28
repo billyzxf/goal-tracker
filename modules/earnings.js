@@ -12,6 +12,8 @@
  *   - 展示披露日期，跟踪最近披露的财报
  *   - 与估值模块联动：未跟踪的公司可「➕ 加入估值」（带出行业/板块/林奇类型），
  *     已跟踪的可「🔍 详情」跳转到估值模块公司详情页
+ *   - 自定义指标：由两个内置指标做 + − × ÷ 计算生成新列（存 DB 持久化），
+ *     可像普通指标一样排序，并支持按自定义指标筛选（对数值 / 对字段）
  */
 (function(){
   // 指标列定义（key 与 fetch_earnings.py 的 OUT_COLUMNS 列名一致）
@@ -60,7 +62,7 @@
   };
 
   function seed(){
-    return { rows: [], importedAt: null };
+    return { rows: [], importedAt: null, customMetrics: [] };
   }
 
   // 从 DB 里读数据
@@ -127,8 +129,34 @@
     return isNaN(n) ? null : n;
   }
 
-  // 取某行某指标的可比较数值（超预期列为计算值：实际营收同比 - 预期营收同比）
+  // ---- 自定义指标 ----
+  // 定义存 DB.earnings.customMetrics：{name, op:'+'|'-'|'*'|'/', a, b}
+  // 内部引用键为 '#名称'，操作数可以是内置指标或其他自定义指标（嵌套引用，不支持自引用）
+  function getCustomMetrics(){ return Array.isArray(DB.earnings.customMetrics) ? DB.earnings.customMetrics : []; }
+  function customKey(name){ return '#' + name; }
+  const CM_OP_LABEL = { '+':'+', '-':'−', '*':'×', '/':'÷' };
+
+  function computeCustom(row, def){
+    const va = metricVal(row, def.a), vb = metricVal(row, def.b);
+    if(va == null || vb == null) return null;
+    switch(def.op){
+      case '+': return va + vb;
+      case '-': return va - vb;
+      case '*': return va * vb;
+      case '/': return vb === 0 ? null : va / vb;
+    }
+    return null;
+  }
+
+  // 取某行某指标的可比较数值
+  //  - '#名称' → 自定义指标（递归求值）
+  //  - '超预期' → 计算值：实际营收同比 - 预期营收同比
+  //  - 其他   → CSV 列数值化
   function metricVal(row, key){
+    if(typeof key === 'string' && key.charAt(0) === '#'){
+      const def = getCustomMetrics().find(d => customKey(d.name) === key);
+      return def ? computeCustom(row, def) : null;
+    }
     if(key === '超预期'){
       const a = num(row['营收同比']), e = num(row['预期营收同比']);
       return (a != null && e != null) ? a - e : null;
@@ -136,16 +164,18 @@
     return num(row[key]);
   }
 
-  // 自定义筛选条件：{key, op:'>='|'<='|'>'|'<', value}
+  // 自定义筛选条件：{key, op:'>='|'<='|'>'|'<', value, cmpField?}
+  // cmpField=true 时 value 为另一字段名，做字段间比较（行内逐条对比）
   function applyCustomFilters(list, filters){
     (filters || []).forEach(f => {
       list = list.filter(r => {
-        const v = metricVal(r, f.key);
-        if(v == null) return false;
-        if(f.op === '>=') return v >= f.value;
-        if(f.op === '<=') return v <= f.value;
-        if(f.op === '>')  return v > f.value;
-        if(f.op === '<')  return v < f.value;
+        const lv = metricVal(r, f.key);
+        const rv = f.cmpField ? metricVal(r, f.value) : f.value;
+        if(lv == null || rv == null) return false;
+        if(f.op === '>=') return lv >= rv;
+        if(f.op === '<=') return lv <= rv;
+        if(f.op === '>')  return lv > rv;
+        if(f.op === '<')  return lv < rv;
         return true;
       });
     });
@@ -178,11 +208,12 @@
       '<div class="val-stat"><div class="vs-label">有披露日期</div><div class="vs-value">' + rows.filter(r => r['披露日期']).length + '</div></div>' +
       '</div>';
 
-    // ---- 筛选 chips：行业 ----
+    // ---- 筛选 chips：行业（多选，点击切换选中，再点取消；不选 = 全部）----
     const industries = [...new Set(rows.map(r => r['行业']).filter(Boolean))];
+    const selInd = state.earnIndustries || [];
     h += '<div class="chips" style="margin:12px 0 8px">' +
-      '<button class="chip ' + (state.earnIndustry === '全部' || !state.earnIndustry ? 'active' : '') + '" data-action="earn.fIndustry" data-v="全部">全部行业</button>' +
-      industries.map(i => '<button class="chip ' + (state.earnIndustry === i ? 'active' : '') + '" data-action="earn.fIndustry" data-v="' + esc(i) + '">' + i + '</button>').join('') +
+      '<button class="chip ' + (selInd.length ? '' : 'active') + '" data-action="earn.fIndustryClear">全部行业</button>' +
+      industries.map(i => '<button class="chip ' + (selInd.includes(i) ? 'active' : '') + '" data-action="earn.fIndustry" data-v="' + esc(i) + '">' + i + '</button>').join('') +
       '</div>';
 
     // ---- 筛选 chips：板块 ----
@@ -196,27 +227,53 @@
 
     // ---- 剔除营收同比<20% 开关 + 自定义数值筛选（紧凑单行）----
     const cf = state.earnCustomFilters || [];
+    const isFieldMode = state.earnFilterMode === 'field';
     const OP_LABEL = { '>=':'≥', '<=':'≤', '>':'>', '<':'<' };
-    // 可选指标：所有数值列（含超预期计算列）
     const numMetrics = METRICS.filter(m => ['num','pct','beat'].includes(m.type));
+    // 可选指标 = 内置数值列 + 自定义指标（含超预期计算列），供筛选下拉使用
+    const cmDefs = getCustomMetrics();
+    const metricOptions = numMetrics.concat(cmDefs.map(d => ({ key: customKey(d.name), label: d.name })));
+    const labelOf = key => { const m = metricOptions.find(x => x.key === key); return m ? m.label : key; };
     h += '<div class="earn-filterbar">' +
       '<button class="chip ' + (state.earnFilterLow ? 'active' : '') + '" data-action="earn.toggleLow" title="默认剔除营收同比低于 ' + MIN_REVENUE_YOY + '% 的公司，便于聚焦高增长标的">营收同比≥' + MIN_REVENUE_YOY + '%（' + (state.earnFilterLow ? '开' : '关') + '）</button>' +
       // 已添加的自定义条件 → 可删除的 chip
       cf.map((f, i) => '<button class="chip active" data-action="earn.delFilter" data-idx="' + i + '" title="点击移除该筛选条件">' +
-        esc(f.key) + ' ' + esc(OP_LABEL[f.op] || f.op) + ' ' + f.value + ' ✕</button>').join('') +
-      // 新增条件：字段 / 运算符 / 数值
+        esc(labelOf(f.key)) + ' ' + esc(OP_LABEL[f.op] || f.op) + ' ' + esc(f.cmpField ? labelOf(f.value) + '（字段）' : f.value) + ' ✕</button>').join('') +
+      // 模式切换：对数值 / 对字段
+      '<button class="chip" data-action="earn.toggleFfMode" title="切换筛选模式：与固定数值比较，或两个字段之间逐行比较">' + (isFieldMode ? '字段对比' : '数值对比') + '</button>' +
+      // 新增条件：字段 / 运算符 / 数值(或字段)
       '<select id="earnFfKey" title="选择筛选字段">' +
-        numMetrics.map(m => '<option value="' + esc(m.key) + '">' + esc(m.label) + '</option>').join('') + '</select>' +
+        metricOptions.map(m => '<option value="' + esc(m.key) + '">' + esc(m.label) + '</option>').join('') + '</select>' +
       '<select id="earnFfOp" title="选择比较符">' +
         Object.keys(OP_LABEL).map(op => '<option value="' + op + '">' + OP_LABEL[op] + '</option>').join('') + '</select>' +
-      '<input id="earnFfVal" type="number" step="any" placeholder="数值">' +
+      (isFieldMode
+        ? '<select id="earnFfVal" title="选择比较字段">' + metricOptions.map(m => '<option value="' + esc(m.key) + '">' + esc(m.label) + '</option>').join('') + '</select>'
+        : '<input id="earnFfVal" type="number" step="any" placeholder="数值">') +
       '<button class="btn ghost sm" data-action="earn.addFilter">＋</button>' +
       '<span class="hint">点列头排序 · 点已添加条件可移除</span>' +
       '</div>';
 
+    // ---- 自定义指标定义（两个指标的 + − × ÷）----
+    h += '<div class="earn-filterbar">' +
+      '<button class="chip ' + (state.earnMetricOpen ? 'active' : '') + '" data-action="earn.toggleMetricDef" title="定义自定义指标（如两指标的差/比），将作为新列展示，可排序、可参与筛选">🧮 自定义指标(' + cmDefs.length + ')</button>' +
+      cmDefs.map((d, i) => '<button class="chip active" data-action="earn.delMetric" data-idx="' + i + '" title="点击删除该自定义指标（引用它的筛选条件会一并移除）">' +
+        esc(d.name) + ' = ' + esc(labelOf(d.a)) + ' ' + esc(CM_OP_LABEL[d.op] || d.op) + ' ' + esc(labelOf(d.b)) + ' ✕</button>').join('') +
+      '</div>';
+    if(state.earnMetricOpen){
+      h += '<div class="earn-filterbar" style="margin-bottom:12px">' +
+        '<input id="earnCmName" type="text" placeholder="指标名称" style="width:110px">' +
+        '<select id="earnCmA" title="指标 A">' + metricOptions.map(m => '<option value="' + esc(m.key) + '">' + esc(m.label) + '</option>').join('') + '</select>' +
+        '<select id="earnCmOp" title="运算符">' +
+          Object.keys(CM_OP_LABEL).map(op => '<option value="' + op + '">' + CM_OP_LABEL[op] + '</option>').join('') + '</select>' +
+        '<select id="earnCmB" title="指标 B">' + metricOptions.map(m => '<option value="' + esc(m.key) + '">' + esc(m.label) + '</option>').join('') + '</select>' +
+        '<button class="btn ghost sm" data-action="earn.addMetric">＋ 定义</button>' +
+        '<span class="hint">示例：质量 = 扣非净利同比 − 营收同比；现金流覆盖 = 经营现金流 ÷ 净利润</span>' +
+        '</div>';
+    }
+
     // ---- 过滤 + 排序 ----
     let list = rows.slice();
-    if(state.earnIndustry && state.earnIndustry !== '全部') list = list.filter(r => r['行业'] === state.earnIndustry);
+    if(state.earnIndustries && state.earnIndustries.length) list = list.filter(r => state.earnIndustries.includes(r['行业']));
     if(state.earnBoard && state.earnBoard !== '全部') list = list.filter(r => r['板块'] === state.earnBoard);
     if(state.earnFilterLow) list = list.filter(r => {
       const v = num(r[REVENUE_YOY_KEY]);
@@ -240,11 +297,15 @@
     }
 
     // ---- 表格 ----
+    // 列 = 内置指标 + 自定义指标（计算列）
+    const cols = METRICS.concat(cmDefs.map(d => ({
+      key: customKey(d.name), label: d.name, type: 'calc', sortable: true, group: '自定义',
+    })));
     // wide-table-wrap：宽屏下表格按内容自动扩宽（占满可视区），窄屏才出现横向滚动条。
     //   - width:auto + min-width:100%：内容 ≤ 容器时填满；内容 > 容器时按 max-content 撑开由外层 overflow 滚动
     h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
       '<th>公司</th><th>行业</th>' +
-      METRICS.map(m => {
+      cols.map(m => {
         let th = esc(m.label);
         if(m.unit) th += ' <span class="unit">(' + m.unit + ')</span>';
         let arrow = '';
@@ -252,12 +313,16 @@
           arrow = state.earnSortDir === 'asc' ? ' ▲' : ' ▼';
         }
         // 分组说明：一致预期列 / 超预期列给出提示
+        const def = m.type === 'calc' ? cmDefs.find(d => customKey(d.name) === m.key) : null;
         let tip = '';
-        if(m.group === '一致预期') tip = '当年一致预期（券商预测均值）';
+        if(def) tip = '自定义指标：' + labelOf(def.a) + ' ' + (CM_OP_LABEL[def.op] || def.op) + ' ' + labelOf(def.b);
+        else if(m.group === '一致预期') tip = '当年一致预期（券商预测均值）';
         else if(m.key === '超预期') tip = '实际营收同比 - 预期营收同比（>0 表示财报超预期）';
         else tip = '点击按此列排序';
-        const sorter = m.sortable ? ' data-action="earn.sort" data-key="' + m.key + '" style="cursor:pointer" title="' + tip + '"' : '';
-        const headCls = m.group === '一致预期' ? ' style="border-left:2px solid var(--indigo);"' : (m.key === '超预期' ? ' style="border-left:2px solid var(--pink);"' : '');
+        const sorter = m.sortable ? ' data-action="earn.sort" data-key="' + esc(m.key) + '" style="cursor:pointer" title="' + esc(tip) + '"' : '';
+        const headCls = m.group === '一致预期' ? ' style="border-left:2px solid var(--indigo);"'
+          : (m.key === '超预期' ? ' style="border-left:2px solid var(--pink);"'
+          : (m.group === '自定义' ? ' style="border-left:2px solid var(--amber);"' : ''));
         return '<th class="num"' + headCls + ' ' + sorter + '>' + th + arrow + '</th>';
       }).join('') +
       '<th style="border-left:2px solid var(--green)">操作</th>' +
@@ -276,13 +341,21 @@
           (board ? ' <span class="badge ' + (BOARD_CLS[board] || 'gray') + '">' + esc(board) + '</span>' : '') +
           (lynch ? ' <span class="badge ' + (LYNCH_CLS[lynch] || 'gray') + '" title="林奇分类：' + esc(lynch) + '">' + esc(lynch) + '</span>' : '') +
         '</td>';
-      METRICS.forEach(m => {
+      cols.forEach(m => {
         const raw = r[m.key];
         if(m.type === 'date'){
           h += '<td class="num" style="white-space:nowrap">' + esc(raw || '—') + '</td>';
         } else if(m.type === 'text'){
           // 文本列（如季度）直接显示原值
           h += '<td class="num" style="white-space:nowrap">' + esc(raw || '—') + '</td>';
+        } else if(m.type === 'calc'){
+          // 自定义指标（计算列）：指标 A op 指标 B
+          const v = metricVal(r, m.key);
+          if(v == null){ h += '<td class="num"><span class="muted">—</span></td>'; }
+          else {
+            const str = Math.abs(v) < 100 ? v.toFixed(2) : v.toFixed(1);
+            h += '<td class="num" title="' + esc(m.label) + '">' + str + '</td>';
+          }
         } else if(m.type === 'beat'){
           // 超预期判定：实际营收同比 vs 预期营收同比（百分点差）
           const actYoy = num(r['营收同比']);
@@ -370,6 +443,7 @@
     ensure: (db, sv) => {
       if(!Array.isArray(db.earnings.rows)) db.earnings.rows = sv.rows;
       if(!db.earnings.importedAt) db.earnings.importedAt = sv.importedAt;
+      if(!Array.isArray(db.earnings.customMetrics)) db.earnings.customMetrics = sv.customMetrics;
     },
     render: renderEarnings,
     actions: {
@@ -380,7 +454,7 @@
           state.earnSort = '披露日期'; state.earnSortDir = 'desc';
           state.earnFilterLow = true;
           state.earnCustomFilters = [];
-          state.earnIndustry = '全部'; state.earnBoard = '全部';
+          state.earnIndustries = []; state.earnBoard = '全部';
           save(); render();
         }
       },
@@ -395,18 +469,61 @@
         }
         render();
       },
-      'earn.fIndustry': el => { state.earnIndustry = el.dataset.v; render(); },
+      'earn.fIndustry': el => {
+        // 多选：点击选中，再次点击取消
+        const v = el.dataset.v;
+        const set = new Set(state.earnIndustries || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.earnIndustries = [...set];
+        render();
+      },
+      'earn.fIndustryClear': () => { state.earnIndustries = []; render(); },
       'earn.fBoard': el => { state.earnBoard = el.dataset.v; render(); },
       'earn.toggleLow': el => { state.earnFilterLow = !state.earnFilterLow; render(); },
       // —— 自定义数值筛选（字段+运算符+数值，可叠加）——
       'earn.addFilter': () => {
         const key = document.getElementById('earnFfKey').value;
         const op = document.getElementById('earnFfOp').value;
-        const value = parseFloat(document.getElementById('earnFfVal').value);
-        if(isNaN(value)){ toast('⚠️ 请先输入筛选数值'); return; }
+        const raw = document.getElementById('earnFfVal').value;
         state.earnCustomFilters = state.earnCustomFilters || [];
-        state.earnCustomFilters.push({ key, op, value });
+        if(state.earnFilterMode === 'field'){
+          // 字段间比较：逐行取两字段数值对比
+          if(raw === key){ toast('⚠️ 比较字段不能与筛选字段相同'); return; }
+          state.earnCustomFilters.push({ key, op, value: raw, cmpField: true });
+        } else {
+          const value = parseFloat(raw);
+          if(isNaN(value)){ toast('⚠️ 请先输入筛选数值'); return; }
+          state.earnCustomFilters.push({ key, op, value });
+        }
         render();
+      },
+      'earn.toggleFfMode': () => { state.earnFilterMode = state.earnFilterMode === 'field' ? 'value' : 'field'; render(); },
+      // —— 自定义指标（两指标的 + − × ÷，存 DB 持久化）——
+      'earn.toggleMetricDef': () => { state.earnMetricOpen = !state.earnMetricOpen; render(); },
+      'earn.addMetric': () => {
+        const name = (document.getElementById('earnCmName').value || '').trim();
+        const a = document.getElementById('earnCmA').value;
+        const op = document.getElementById('earnCmOp').value;
+        const b = document.getElementById('earnCmB').value;
+        if(!name){ toast('⚠️ 请先输入指标名称'); return; }
+        const defs = getCustomMetrics();
+        if(defs.some(d => d.name === name)){ toast('⚠️ 已存在同名指标'); return; }
+        if(a === b){ toast('⚠️ 两个操作数不能是同一指标'); return; }
+        defs.push({ name, op, a, b });
+        DB.earnings.customMetrics = defs;
+        save(); render();
+        toast('✅ 自定义指标「' + name + '」已添加，可点击列头排序或加入筛选');
+      },
+      'earn.delMetric': el => {
+        const idx = parseInt(el.dataset.idx, 10);
+        const defs = getCustomMetrics();
+        if(idx < 0 || idx >= defs.length) return;
+        const key = customKey(defs[idx].name);
+        defs.splice(idx, 1);
+        DB.earnings.customMetrics = defs;
+        // 一并移除引用该指标的筛选条件，避免残留失效条件
+        state.earnCustomFilters = (state.earnCustomFilters || []).filter(f => f.key !== key && f.value !== key);
+        save(); render();
       },
       'earn.delFilter': el => {
         const idx = parseInt(el.dataset.idx, 10);

@@ -126,11 +126,11 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
 /* 财报跟踪：自定义数值筛选条（紧凑单行） */
 .earn-filterbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-.earn-filterbar select,.earn-filterbar input[type=number]{
+.earn-filterbar select,.earn-filterbar input[type=number],.earn-filterbar input[type=text]{
   width:auto;flex:none;padding:4px 8px;font-size:12px;border-radius:8px;border:1px solid var(--line);
   background:var(--input-bg);color:var(--ink);outline:none;line-height:1.4;
 }
-.earn-filterbar select:focus,.earn-filterbar input[type=number]:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(14,169,123,.12)}
+.earn-filterbar select:focus,.earn-filterbar input[type=number]:focus,.earn-filterbar input[type=text]:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(14,169,123,.12)}
 .earn-filterbar input[type=number]{width:84px}
 .earn-filterbar .chip{padding:4px 10px}
 .earn-filterbar .hint{font-size:12px;color:var(--ink2)}
