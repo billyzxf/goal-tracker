@@ -428,11 +428,16 @@ def fetch_by_date(em, date_from, date_to, opts):
         secus.append('%s.%s' % (c6, market_of(c6)))
     org = em.basic_orginfo(secus)
 
-    rows = []
-    for r in items:
-        code6 = str(r.get('SECURITY_CODE') or '')
-        secu = '%s.%s' % (code6, market_of(code6))
-        info = org.get(code6, {})
+    # 并发补齐每家公司的完整字段（每线程独立 client，避免共享 session 争用）
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    local = threading.local()
+
+    def _worker(task):
+        r, secu, info = task
+        if not hasattr(local, 'em'):
+            local.em = EastmoneyClient()
+        em_t = local.em
         row = {
             '股票代码': secu,
             '公司名称': r.get('SECURITY_NAME_ABBR') or '',
@@ -449,10 +454,30 @@ def fetch_by_date(em, date_from, date_to, opts):
             '毛利率': as_num(r.get('XSMLL')),
         }
         if opts['with_full']:
-            _enrich_financials(em, row, r)
+            _enrich_financials(em_t, row, r)
         if opts['with_consensus']:
-            _add_consensus(em, row)
-        rows.append(row)
+            _add_consensus(em_t, row)
+        return row
+
+    tasks = []
+    for r in items:
+        code6 = str(r.get('SECURITY_CODE') or '')
+        secu = '%s.%s' % (code6, market_of(code6))
+        tasks.append((r, secu, org.get(code6, {})))
+
+    rows = []
+    done = 0
+    workers = max(1, int(opts.get('workers', 6)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_worker, t): t[1] for t in tasks}
+        for fut in as_completed(futs):
+            try:
+                rows.append(fut.result())
+            except Exception as e:   # noqa: BLE001
+                print('  %s 补齐失败: %s' % (futs[fut], str(e)[:80]))
+            done += 1
+            if done % 100 == 0:
+                print('  进度 %d/%d' % (done, len(tasks)))
     return rows
 
 
@@ -494,6 +519,7 @@ def main():
     ap.add_argument('--consensus', action='store_true', help='按日期获取时也拉取当年一致预期（较慢）')
     ap.add_argument('--no-full', action='store_true', help='跳过补齐扣非/经营现金流/资本开支（更快，仅业绩报表字段）')
     ap.add_argument('--all-market', action='store_true', help='包含新三板/三板等非 A 股')
+    ap.add_argument('--workers', type=int, default=6, help='按日期获取时的并发线程数（默认 6）')
     args = ap.parse_args()
 
     root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -527,6 +553,7 @@ def main():
         'with_full': not args.no_full,
         'with_consensus': args.consensus,
         'limit': args.limit,
+        'workers': args.workers,
         'include_non_a': args.all_market,
     }
 

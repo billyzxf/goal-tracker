@@ -69,6 +69,9 @@
   // 从 DB 里读数据
   function dataRows(){ return DB.earnings.rows; }
 
+  // 最近一次渲染过滤+排序后的公司列表（供「⬇ 导出 CSV」使用）
+  let lastList = [];
+
   // ---- CSV 解析（与 valuation 一致的轻量解析器） ----
   function parseCsv(text){
     const out = [];
@@ -223,6 +226,7 @@
     let h = header('📊 财报跟踪',
       '按披露日期跟踪财报后的最新财务数据，筛选超预期公司 · 共 ' + rows.length + ' 家',
       '<button class="btn ghost sm" data-action="earn.import" title="导入财报跟踪 CSV（data/earnings/财报跟踪_YYYYMMDD.csv），由 scripts/fetch_earnings.py 生成">⬆ 导入财报 CSV</button>' +
+      '<button class="btn ghost sm" data-action="earn.export" title="导出当前满足全部筛选条件的公司及指标为 CSV，可重新导入">⬇ 导出 CSV</button>' +
       '<button class="btn ghost sm" data-action="earn.clear" title="清空已导入的财报数据">🗑 清空</button>');
 
     if(!rows.length){
@@ -232,15 +236,40 @@
       return h;
     }
 
+    // ---- 过滤（提前计算：统计概览的「当前展示」卡片与表格共用同一份 list）----
+    let list = rows.slice();
+    if(state.earnIndustries && state.earnIndustries.length) list = list.filter(r => state.earnIndustries.includes(r['行业']));
+    if(state.earnBoards && state.earnBoards.length) list = list.filter(r => state.earnBoards.includes(r['板块']));
+    if(state.earnFilterLow) list = list.filter(r => {
+      const v = num(r[REVENUE_YOY_KEY]);
+      return v != null && v >= MIN_REVENUE_YOY;
+    });
+    list = applyCustomFilters(list, state.earnCustomFilters);
+    // 固定筛选：已勾选的规则逐条 AND（勾得越多越严格）
+    const earlyRuleIds = activeRuleIds();
+    if(earlyRuleIds.length){
+      list = list.filter(r => earlyRuleIds.every(id => {
+        const item = RULE_MAP[id];
+        return item ? item.rule.ok(r) : true;
+      }));
+    }
+
     // ---- 统计概览 ----
-    const yoyVals = rows.map(r => num(r[REVENUE_YOY_KEY])).filter(x => x != null);
-    const highGrowth = yoyVals.filter(v => v >= MIN_REVENUE_YOY).length;
     const withConsensus = rows.filter(r => num(r['预期营收']) != null || num(r['预期净利']) != null).length;
+    // L1 真实性卡片：数量随勾选的规则组合变化（AND 叠加，与表格筛选逻辑一致）
+    const ruleIds = activeRuleIds();
+    const l1Rows = ruleIds.length
+      ? rows.filter(r => ruleIds.every(id => { const it = RULE_MAP[id]; return it ? it.rule.ok(r) : true; }))
+      : rows;
+    const l1Sub = ruleIds.length
+      ? Math.round(l1Rows.length / rows.length * 100) + '% 的公司 · ' + ruleIds.length + ' 条规则'
+      : '未勾选规则 = 全部';
     h += '<div class="val-summary-grid">' +
       '<div class="val-stat"><div class="vs-label">跟踪公司</div><div class="vs-value">' + rows.length + '</div></div>' +
-      '<div class="val-stat"><div class="vs-label">营收同比≥' + MIN_REVENUE_YOY + '%</div><div class="vs-value up">' + highGrowth + '</div><div class="vs-sub">' + (yoyVals.length ? Math.round(highGrowth / yoyVals.length * 100) : 0) + '% 的公司</div></div>' +
+      '<div class="val-stat"><div class="vs-label">🛡️ L1 真实性</div><div class="vs-value up">' + l1Rows.length + '</div><div class="vs-sub">' + l1Sub + '</div></div>' +
       '<div class="val-stat"><div class="vs-label">有当年一致预期</div><div class="vs-value">' + withConsensus + '</div><div class="vs-sub">可判断超预期</div></div>' +
       '<div class="val-stat"><div class="vs-label">有披露日期</div><div class="vs-value">' + rows.filter(r => r['披露日期']).length + '</div></div>' +
+      '<div class="val-stat"><div class="vs-label">✅ 当前展示</div><div class="vs-value up">' + list.length + '</div><div class="vs-sub">满足全部筛选条件 · ' + Math.round(list.length / rows.length * 100) + '%</div></div>' +
       '</div>';
 
     // ---- 筛选 chips：行业（多选，点击切换选中，再点取消；不选 = 全部）----
@@ -251,12 +280,13 @@
       industries.map(i => '<button class="chip ' + (selInd.includes(i) ? 'active' : '') + '" data-action="earn.fIndustry" data-v="' + esc(i) + '">' + i + '</button>').join('') +
       '</div>';
 
-    // ---- 筛选 chips：板块 ----
+    // ---- 筛选 chips：板块（多选，点击切换选中，再点取消；不选 = 全部）----
     const boards = [...new Set(rows.map(r => r['板块']).filter(Boolean))];
     if(boards.length){
+      const selBoard = state.earnBoards || [];
       h += '<div class="chips" style="margin-bottom:8px">' +
-        '<button class="chip ' + (state.earnBoard === '全部' || !state.earnBoard ? 'active' : '') + '" data-action="earn.fBoard" data-v="全部">全部板块</button>' +
-        boards.map(b => '<button class="chip ' + (state.earnBoard === b ? 'active' : '') + '" data-action="earn.fBoard" data-v="' + esc(b) + '">' + b + '</button>').join('') +
+        '<button class="chip ' + (selBoard.length ? '' : 'active') + '" data-action="earn.fBoardClear">全部板块</button>' +
+        boards.map(b => '<button class="chip ' + (selBoard.includes(b) ? 'active' : '') + '" data-action="earn.fBoard" data-v="' + esc(b) + '">' + b + '</button>').join('') +
         '</div>';
     }
 
@@ -326,32 +356,35 @@
         '</div>';
     }
 
-    // ---- 过滤 + 排序 ----
-    let list = rows.slice();
-    if(state.earnIndustries && state.earnIndustries.length) list = list.filter(r => state.earnIndustries.includes(r['行业']));
-    if(state.earnBoard && state.earnBoard !== '全部') list = list.filter(r => r['板块'] === state.earnBoard);
-    if(state.earnFilterLow) list = list.filter(r => {
-      const v = num(r[REVENUE_YOY_KEY]);
-      return v != null && v >= MIN_REVENUE_YOY;
-    });
-    list = applyCustomFilters(list, state.earnCustomFilters);
-    // 固定筛选：已勾选的规则逐条 AND（勾得越多越严格）
-    if(activeIds.length){
-      list = list.filter(r => activeIds.every(id => {
-        const item = RULE_MAP[id];
-        return item ? item.rule.ok(r) : true;
-      }));
-    }
+    // ---- 排序（list 已在统计概览前完成过滤，此处直接排序）----
 
-    const sortVal = (row, key) => metricVal(row, key);
+    // 日期/文本列不能用 num() 数值化（会变 null 导致排序失效），按类型选择比较方式
     const sortKey = state.earnSort || '披露日期';
+    const sortCol = METRICS.find(m => m.key === sortKey);
+    const sortVal = (row, key) => {
+      if(sortCol && sortCol.type === 'date'){
+        const t = Date.parse(String(row[key] || ''));
+        return isNaN(t) ? null : t;
+      }
+      if(sortCol && sortCol.type === 'text'){
+        const s = String(row[key] || '').trim();
+        return s || null;
+      }
+      return metricVal(row, key);
+    };
     const sortDir = state.earnSortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       const na = sortVal(a, sortKey), nb = sortVal(b, sortKey);
-      if(na != null && nb != null) return (na - nb) * sortDir;
+      if(na != null && nb != null){
+        if(typeof na === 'string' || typeof nb === 'string'){
+          return String(na).localeCompare(String(nb)) * sortDir;   // 文本列（如季度）按字典序
+        }
+        return (na - nb) * sortDir;
+      }
       if(na == null && nb == null) return 0;
       return na == null ? 1 : -1;   // 空值排最后
     });
+    lastList = list;   // 记录当前过滤+排序结果，供「⬇ 导出 CSV」使用
 
     if(!list.length){
       h += '<div class="card"><div class="empty">当前筛选条件下没有符合条件的公司</div></div>';
@@ -465,6 +498,50 @@
     return h;
   }
 
+  // ---- 导出 CSV（当前满足全部筛选条件的公司 + 指标）----
+  // 导出文件含 # 注释头与「股票代码」表头，可直接重新「⬆ 导入财报 CSV」
+  // 导出列 = 基础信息列 + 全部指标列（含超预期）+ 自定义指标列
+  const EXPORT_BASE = ['股票代码', '公司名称', '行业', '板块', '林奇类型', '披露日期', '报告期', '季度'];
+  function exportCsv(){
+    if(!lastList.length){ toast('⚠️ 当前没有满足筛选条件的公司'); return; }
+    const metricKeys = METRICS.map(m => m.key).filter(k => k !== '披露日期' && k !== '季度');
+    const cols = EXPORT_BASE.concat(metricKeys, getCustomMetrics().map(d => customKey(d.name)));
+    const lines = ['# GoalTracker 财报跟踪（满足筛选条件 ' + lastList.length + ' 家，导出于 ' + dateStr() + '）',
+      cols.map(c => c.charAt(0) === '#' ? c.slice(1) : c).join(',')];
+    lastList.forEach(r => {
+      lines.push(cols.map(c => {
+        // 自定义指标列不在 row 上存储，按定义实时计算
+        let v = c.charAt(0) === '#' ? metricVal(r, c) : r[c];
+        if(v == null) return '';
+        v = String(v);
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(','));
+    });
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const fname = '财报跟踪_筛选_' + dateStr() + '.csv';
+    // 降级：直接下载到浏览器默认下载目录
+    const fallback = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('✅ 已导出 ' + lastList.length + ' 家公司及指标数据');
+    };
+    // 优先弹出「另存为」对话框，可自选目录/文件名（Chrome/Edge；用户取消则不导出）
+    if(window.showSaveFilePicker){
+      window.showSaveFilePicker({
+        suggestedName: fname,
+        types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }],
+      }).then(handle => handle.createWritable())
+        .then(w => w.write(blob).then(() => w.close()))
+        .then(() => toast('✅ 已导出 ' + lastList.length + ' 家公司至所选位置'))
+        .catch(e => { if(e && e.name !== 'AbortError') fallback(); });
+    } else {
+      fallback();
+    }
+  }
+
   // ---- 导入 CSV ----
   function importCsv(){
     const input = document.createElement('input');
@@ -510,13 +587,14 @@
     render: renderEarnings,
     actions: {
       'earn.import': () => importCsv(),
+      'earn.export': () => exportCsv(),
       'earn.clear': () => {
         if(confirm('确认清空所有已导入的财报跟踪数据？')){
           DB.earnings.rows = []; DB.earnings.importedAt = null;
           state.earnSort = '披露日期'; state.earnSortDir = 'desc';
           state.earnFilterLow = true;
           state.earnCustomFilters = [];
-          state.earnIndustries = []; state.earnBoard = '全部';
+          state.earnIndustries = []; state.earnBoards = [];
           save(); render();
         }
       },
@@ -540,7 +618,15 @@
         render();
       },
       'earn.fIndustryClear': () => { state.earnIndustries = []; render(); },
-      'earn.fBoard': el => { state.earnBoard = el.dataset.v; render(); },
+      'earn.fBoard': el => {
+        // 多选：点击选中，再次点击取消
+        const v = el.dataset.v;
+        const set = new Set(state.earnBoards || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.earnBoards = [...set];
+        render();
+      },
+      'earn.fBoardClear': () => { state.earnBoards = []; render(); },
       'earn.toggleLow': el => { state.earnFilterLow = !state.earnFilterLow; render(); },
       // —— 固定筛选：规则独立勾选，自由组合 ——
       'earn.toggleRule': el => {
