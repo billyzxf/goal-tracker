@@ -182,7 +182,7 @@ INDICATORS = [
     # ============ 市场自身（表：国内宏观经济，分类"市场"） ============
     I('turnover', 'A股成交额', '万亿', '日度', '市场',
       '钱有没有真正进入股票：指数涨但缩量≠健康；横盘放量可能在风格切换。',
-      [dict(type='em_kline_sum', secids=['1.000001', '0.399106'], factor=1e12)]),
+      [dict(type='em_kline_sum', secids=['1.000001', '0.399106'], factor=1e-12)]),   # 元 → 万亿
     I('northbound', '北向资金净流入', '亿', '日度', '市场',
       '外资风险偏好观测。持续流出常与美元走强同期出现——先看 DXY 再解读。',
       [dict(type='ak', fn='stock_hsgt_hist_em', params={'symbol': '北向资金'},
@@ -190,7 +190,7 @@ INDICATORS = [
     I('margin', '两融余额', '万亿', '日度', '市场',
       '杠杆资金规模。快速上行=风险偏好高（也是脆弱点），快速下行=去杠杆压力。',
       [dict(type='em_dc', report='RPTA_RZRQ_LSHJ', field_candidates=['RZRQYE'],
-            date_field='DIM_DATE', factor=1e12)]),
+            date_field='DIM_DATE', factor=1e-12)]),   # 元 → 万亿
     I('hs300pe', '沪深300 PE', '倍', '周度', '市场',
       '大盘估值锚（股债收益差的分子）。PE本身无意义，看分位数才有意义。',
       [dict(type='ak', fn='stock_index_pe_lg', params={'symbol': '沪深300'},
@@ -553,7 +553,7 @@ def fetch_em_kline_sum(step):
     acc = defaultdict(float)
     hit = defaultdict(set)
     for secid in step['secids']:
-        sub = fetch_em_kline(dict(step, secids=None, secid=secid))
+        sub = fetch_em_kline(dict(step, secids=None, secid=secid, field='amount', factor=1.0))
         for d, v in sub:
             acc[d] += v
             hit[d].add(secid)
