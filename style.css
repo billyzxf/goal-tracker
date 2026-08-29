@@ -432,8 +432,74 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .metric-key-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;background:var(--card);border:1px solid var(--line);border-radius:14px;font-size:12px;cursor:pointer;transition:all 0.12s;user-select:none}
 .metric-key-chip:hover{background:var(--indigo-bg);border-color:var(--indigo);color:var(--indigo);transform:translateY(-1px)}
 .metric-key-chip code{background:transparent;padding:0;font-family:monospace;font-size:12px;font-weight:600;color:var(--ink)}
+
+/* ---------- 宏观雷达：每日速览 / 五层体系 ---------- */
+.macro-daily{margin-bottom:16px;border-color:var(--indigo)}
+.daily-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.daily-item{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:help}
+.daily-item .d-name{font-size:11px;color:var(--ink2);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daily-item .d-val{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.daily-item .d-val small{font-size:11px;font-weight:600;margin-left:3px;color:var(--ink2)}
+.daily-item .d-date{font-size:10px;margin-top:2px}
+.daily-fedwatch{margin-top:10px;font-size:13px;background:var(--indigo-bg);border-radius:8px;padding:8px 12px;color:var(--ink)}
+.macro-layer{margin-top:22px}
+.macro-layer-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-left:4px solid var(--indigo);border-radius:8px;margin-bottom:12px}
+.ml-title{display:flex;align-items:center;gap:8px;font-size:15px;flex-wrap:wrap}
+.macro-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:1080px){.macro-cards{grid-template-columns:1fr}}
+.macro-fw{margin-bottom:14px}
+.macro-quad{margin-bottom:14px}
+.quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:460px}
+.quad-cell{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:3px;opacity:.55;background:var(--bg)}
+.quad-cell span{font-size:11px;color:var(--ink2)}
+.quad-cell.quad-cur{opacity:1;background:var(--indigo-bg);border-color:var(--indigo);font-weight:700}
+.quad-verdict{margin-top:10px;font-size:13px;font-weight:600;color:var(--indigo)}
+.macro-spread .spread-line{font-size:15px}
+.macro-spread .spread-line b{font-size:20px}
+
+/* ---------- 宏观雷达二期：温度计 / Regime / 预警 / 轮动 ---------- */
+.thermo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+@media(max-width:900px){.thermo-grid{grid-template-columns:1fr}}
+.thermo{margin-bottom:0}
+.th-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.th-name{font-weight:700;font-size:14px}
+.th-val{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+.th-bar{position:relative;height:10px;background:var(--bg);border-radius:99px;overflow:hidden;margin-bottom:8px}
+.th-fill{height:100%;border-radius:99px;transition:width .4s}
+.th-mid{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--ink2);opacity:.4}
+.th-sub{font-size:12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.th-adj{margin-left:auto;display:flex;gap:2px}
+.th-adj .icon-btn{padding:2px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px}
+.th-desc{font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.speed-warn{margin:2px 0 8px}
+.warn-red{background:var(--pink-bg);color:var(--pink);font-size:12px;font-weight:700;border-radius:8px;padding:6px 10px;margin-bottom:4px}
+.warn-green{background:var(--green-bg);color:var(--green-dk);font-size:12px;font-weight:600;border-radius:8px;padding:6px 10px;margin-bottom:4px}
+.macro-rot tr.rot-on td{background:var(--green-bg)}
+.quick-grid{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;padding-right:4px}
+.qg-row{display:flex;align-items:center;gap:10px}
+.qg-row label{flex:0 0 42%;font-size:13px;color:var(--ink2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qg-row input{flex:1;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;outline:none}
+.qg-row input:focus{border-color:var(--indigo)}
 .metric-key-chip:hover code{color:var(--indigo)}
 .metric-key-chip .muted{font-size:11px}
+
+/* ---------- 宏观雷达三期：分位徽章 / 参评明细 / 剪刀差 / FedWatch 边际变化 ---------- */
+.pct-badge{font-variant-numeric:tabular-nums}
+.th-detail{margin-top:6px;font-size:12px}
+.th-detail>summary{cursor:pointer;color:var(--ink2);font-size:12px;user-select:none;list-style:none;display:inline-flex;gap:4px;align-items:center;border-radius:6px;padding:2px 6px}
+.th-detail>summary::-webkit-details-marker{display:none}
+.th-detail>summary::before{content:'▸';display:inline-block;font-size:11px;transition:transform .15s}
+.th-detail[open]>summary::before{transform:rotate(90deg)}
+.th-detail>summary:hover{background:var(--bg);color:var(--ink)}
+.th-contrib{display:flex;justify-content:space-between;gap:8px;padding:4px 0 3px;border-top:1px dashed var(--line);margin-top:4px}
+.th-contrib:first-of-type{border-top:none;margin-top:2px}
+.th-contrib .good{color:var(--green-dk);font-weight:700}
+.th-contrib .bad{color:var(--red);font-weight:700}
+.th-contrib small{color:var(--ink2);font-weight:400;margin-left:2px}
+.macro-scissors .scissors-box{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.scissors-val{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.macro-regime{margin-bottom:14px}
+.fw-delta{font-size:11px;font-weight:700;margin-left:3px;font-variant-numeric:tabular-nums}
 
 /* ---------- 宏观经济 ---------- */
 .macro-cat-title{font-size:15px;font-weight:800;margin:26px 0 12px;padding-left:10px;border-left:4px solid var(--indigo);color:var(--ink)}

@@ -214,7 +214,11 @@ def parse_ak_date(raw, kind):
             return '%s-%02d' % (m.group(1), int(m.group(2)))
         return s
     if kind == 'day':
-        m = re.match(r'^(\d{4})-(\d{1,2})', s)
+        # 日度数据保留完整日期（此前截断到月会导致同月多值互相覆盖、丢失日内波动）
+        m = re.match(r'^(\d{4}-\d{2}-\d{2})', s)
+        if m:
+            return m.group(1)
+        m = re.match(r'^(\d{4})-(\d{1,2})$', s)
         if m:
             return '%s-%02d' % (m.group(1), int(m.group(2)))
         return s
