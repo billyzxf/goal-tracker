@@ -1,0 +1,50 @@
+# 宏观数据定时抓取：工作日自动运行 fetch_macro_all.py，增量更新 CSV 并提交。
+# 运行后仓库内 data/macro/宏观经济_全部数据.csv 即为最新；
+# 前端在「宏观经济 → 导入全部」选择该 CSV（或直接下载 raw 文件导入）即可刷新数据。
+#
+# 也支持手动触发（Actions 页面 → Run workflow）。
+name: macro-data
+
+on:
+  schedule:
+    - cron: '30 6 * * 1-5'    # 北京时间 工作日 14:30（A股午后，隔夜美债/FRED 已更新）
+    - cron: '0 14 * * 1-5'    # 北京时间 工作日 22:00（美股盘中，美元/大宗/美债日更）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macro-data
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet requests pandas akshare
+
+      - name: 抓取宏观数据（增量）
+        run: python scripts/fetch_macro_all.py
+
+      - name: 提交更新
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/macro/
+          if git diff --cached --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore(data): 自动更新宏观数据 $(date -u +%F)"
+            git push
+          fi
