@@ -183,36 +183,39 @@
     return list;
   }
 
-  // ---- 固定筛选预设：成套条件一键应用/取消（存于代码，点击即用）----
-  // 规则逐行判断，一票否决（全部满足才通过）；缺数据或分母 ≤0 判不通过（宁缺毋滥）。
+  // ---- 固定筛选：拆分为独立筛选项，可任意勾选组合（AND 叠加，勾得越多越严格）----
+  // 缺数据或分母 ≤0 判不通过（宁缺毋滥）。short = 筛选钮上的简写，name = 完整口径。
   const PRESETS = [
     {
       id: 'l1', name: 'L1 真实性', icon: '🛡️',
       desc: '利润是不是真的（一票否决）',
       rules: [
-        { name: '扣非净利同比 ≥ 30%，且营收同比 > 0',
+        { short: '扣非≥30%', name: '扣非净利同比 ≥ 30%，且营收同比 > 0',
           why: '利润增长必须有收入配合',
           ok: r => { const a = num(r['扣非净利同比']), b = num(r['营收同比']);
                      return a != null && b != null && a >= 30 && b > 0; } },
-        { name: '扣非 ÷ 净利润 ≥ 0.7',
+        { short: '扣非/净利≥0.7', name: '扣非 ÷ 净利润 ≥ 0.7',
           why: '非经常性损益占比过高（反面：通富微电 0.44）',
           ok: r => { const a = num(r['扣非净利润']), b = num(r['净利润']);
                      return a != null && b > 0 && a / b >= 0.7; } },
-        { name: '扣非净利润 > 0 且 ≥ 1 亿',
+        { short: '扣非≥1亿', name: '扣非净利润 > 0 且 ≥ 1 亿',
           why: '“亏损收窄”≠真实增长（反面：南京熊猫）',
           ok: r => { const a = num(r['扣非净利润']); return a != null && a >= 1; } },
-        { name: '净现比 ≥ 0.8（经营现金流 ÷ 净利润）',
+        { short: '净现比≥0.8', name: '净现比 ≥ 0.8（经营现金流 ÷ 净利润）',
           why: '利润没有现金流背书（反面：金安国纪 0.39、宝胜 −5.01）',
           ok: r => { const a = num(r['经营现金流']), b = num(r['净利润']);
                      return a != null && b > 0 && a / b >= 0.8; } },
-        { name: '收现比 ≥ 0.9（销售收现 ÷ 营业收入）',
+        { short: '收现比≥0.9', name: '收现比 ≥ 0.9（销售收现 ÷ 营业收入）',
           why: '收入未转化为真金白银（反面：金安 78.2%）',
           ok: r => { const a = num(r['销售收现']), b = num(r['营业收入']);
                      return a != null && b > 0 && a / b >= 0.9; } },
       ],
     },
   ];
-  function presetOf(id){ return PRESETS.find(p => p.id === id) || null; }
+  // 规则 id = 'l1:0' 形式；map 便于按 id 取规则
+  const RULE_MAP = {};
+  PRESETS.forEach(p => p.rules.forEach((rl, i) => { RULE_MAP[p.id + ':' + i] = { preset: p, rule: rl }; }));
+  function activeRuleIds(){ return state.earnPresetRules || []; }
 
   // ---- 渲染 ----
   function renderEarnings(){
@@ -257,21 +260,23 @@
         '</div>';
     }
 
-    // ---- 固定筛选预设（一键成套筛选）----
+    // ---- 固定筛选：L1 真实性（每条规则独立勾选，自由组合）----
+    const activeIds = activeRuleIds();
     h += '<div class="earn-filterbar">' +
-      '<span class="hint" style="margin-right:2px">固定筛选</span>' +
-      PRESETS.map(p => {
-        const on = state.earnPreset === p.id;
-        const passAll = rows.filter(r => p.rules.every(rl => rl.ok(r))).length;
-        return '<button class="chip ' + (on ? 'active' : '') + '" data-action="earn.togglePreset" data-v="' + p.id + '"' +
-          ' title="' + esc(p.desc) + ' · 满足 ' + passAll + '/' + rows.length + ' 家">' +
-          p.icon + ' ' + p.name + ' ' + passAll + '/' + rows.length + '（' + (on ? '开' : '关') + '）</button>';
+      '<span class="hint" style="margin-right:2px">🛡️ L1 真实性</span>' +
+      '<button class="chip' + (activeIds.length === PRESETS[0].rules.length ? ' active' : '') + '" data-action="earn.allRules" title="勾选全部规则 = 完整 L1 一票否决">全选</button>' +
+      PRESETS[0].rules.map((rl, i) => {
+        const id = PRESETS[0].id + ':' + i;
+        const on = activeIds.includes(id);
+        const pass = rows.filter(rl.ok).length;
+        return '<button class="chip ' + (on ? 'active' : '') + '" data-action="earn.toggleRule" data-v="' + id + '"' +
+          ' title="' + esc(rl.name) + ' — ' + esc(rl.why) + ' · 满足 ' + pass + '/' + rows.length + ' 家">' +
+          (on ? '✓ ' : '') + esc(rl.short) + '（' + pass + '）</button>';
       }).join('') +
       '</div>';
-    const preset = presetOf(state.earnPreset);
-    if(preset){
-      h += '<div class="hint" style="margin:4px 2px 8px;line-height:1.9">🛡️ ' + esc(preset.desc) + '（一票否决，全部满足才显示）：<br>' +
-        preset.rules.map((rl, i) => (i + 1) + '. ' + esc(rl.name) + ' <span style="opacity:.6">— ' + esc(rl.why) + '</span>').join('<br>') +
+    if(activeIds.length){
+      h += '<div class="hint" style="margin:4px 2px 8px;line-height:1.9">当前组合（AND 叠加）：<br>' +
+        activeIds.map(id => '✓ ' + esc(RULE_MAP[id].rule.name) + ' <span style="opacity:.6">— ' + esc(RULE_MAP[id].rule.why) + '</span>').join('<br>') +
         '</div>';
     }
 
@@ -330,8 +335,13 @@
       return v != null && v >= MIN_REVENUE_YOY;
     });
     list = applyCustomFilters(list, state.earnCustomFilters);
-    // 固定筛选预设：一票否决（每条规则都通过才保留）
-    if(preset) list = list.filter(r => preset.rules.every(rl => rl.ok(r)));
+    // 固定筛选：已勾选的规则逐条 AND（勾得越多越严格）
+    if(activeIds.length){
+      list = list.filter(r => activeIds.every(id => {
+        const item = RULE_MAP[id];
+        return item ? item.rule.ok(r) : true;
+      }));
+    }
 
     const sortVal = (row, key) => metricVal(row, key);
     const sortKey = state.earnSort || '披露日期';
@@ -532,12 +542,19 @@
       'earn.fIndustryClear': () => { state.earnIndustries = []; render(); },
       'earn.fBoard': el => { state.earnBoard = el.dataset.v; render(); },
       'earn.toggleLow': el => { state.earnFilterLow = !state.earnFilterLow; render(); },
-      // —— 固定筛选预设（点击开/关；同时只激活一个）——
-      'earn.togglePreset': el => {
+      // —— 固定筛选：规则独立勾选，自由组合 ——
+      'earn.toggleRule': el => {
         const v = el.dataset.v;
-        state.earnPreset = (state.earnPreset === v) ? '' : v;
+        const set = new Set(activeRuleIds());
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.earnPresetRules = [...set];
         render();
       },
+      'earn.allRules': () => {
+        state.earnPresetRules = PRESETS.flatMap(p => p.rules.map((_, i) => p.id + ':' + i));
+        render();
+      },
+      'earn.clearRules': () => { state.earnPresetRules = []; render(); },
       // —— 自定义数值筛选（字段+运算符+数值，可叠加）——
       'earn.addFilter': () => {
         const key = document.getElementById('earnFfKey').value;
