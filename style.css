@@ -86,7 +86,7 @@ a{color:var(--indigo);text-decoration:none}
 
 /* ---------- 通用组件 ---------- */
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;border:1px solid rgba(231,234,240,.7)}
-.card + .card{margin-top:18px}
+.card + .card{margin-top:16px}
 .sec-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap}
 .sec-title h2{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
 .sec-title .dot{width:8px;height:8px;border-radius:50%}
@@ -442,13 +442,13 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .daily-item .d-val small{font-size:11px;font-weight:600;margin-left:3px;color:var(--ink2)}
 .daily-item .d-date{font-size:10px;margin-top:2px}
 .daily-fedwatch{margin-top:10px;font-size:13px;background:var(--indigo-bg);border-radius:8px;padding:8px 12px;color:var(--ink)}
-.macro-layer{margin-top:22px}
-.macro-layer-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-left:4px solid var(--indigo);border-radius:8px;margin-bottom:12px}
+.macro-layer{margin-top:16px}
+.macro-layer-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-left:4px solid var(--indigo);border-radius:8px;margin-bottom:14px}
 .ml-title{display:flex;align-items:center;gap:8px;font-size:15px;flex-wrap:wrap}
 .macro-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:1080px){.macro-cards{grid-template-columns:1fr}}
-.macro-fw{margin-bottom:14px}
-.macro-quad{margin-bottom:14px}
+.macro-fw{margin-bottom:16px}
+.macro-quad{margin-bottom:16px}
 .quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:460px}
 .quad-cell{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:3px;opacity:.55;background:var(--bg)}
 .quad-cell span{font-size:11px;color:var(--ink2)}
@@ -461,16 +461,17 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .thermo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
 @media(max-width:900px){.thermo-grid{grid-template-columns:1fr}}
 .thermo{margin-bottom:0}
-.th-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.th-head{display:flex;align-items:center;justify-content:space-between;min-height:36px;margin-bottom:8px}
 .th-name{font-weight:700;font-size:14px}
-.th-val{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
-.th-bar{position:relative;height:10px;background:var(--bg);border-radius:99px;overflow:hidden;margin-bottom:8px}
+.th-val{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.th-bar{position:relative;height:10px;background:var(--bg);border-radius:99px;overflow:hidden;margin-bottom:10px}
 .th-fill{height:100%;border-radius:99px;transition:width .4s}
 .th-mid{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--ink2);opacity:.4}
-.th-sub{font-size:12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-.th-adj{margin-left:auto;display:flex;gap:2px}
+.th-sub{font-size:12px;display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-height:26px}
+.th-sub-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.th-adj{margin-left:auto;display:flex;gap:2px;flex:none}
 .th-adj .icon-btn{padding:2px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px}
-.th-desc{font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-desc{font-size:11px;margin-top:4px;min-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .speed-warn{margin:2px 0 8px}
 .warn-red{background:var(--pink-bg);color:var(--pink);font-size:12px;font-weight:700;border-radius:8px;padding:6px 10px;margin-bottom:4px}
 .warn-green{background:var(--green-bg);color:var(--green-dk);font-size:12px;font-weight:600;border-radius:8px;padding:6px 10px;margin-bottom:4px}

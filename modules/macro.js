@@ -430,7 +430,7 @@
     const delta = l2.delta != null ? deltaHtml(l2.delta, i.unit) : '';
     const tip = i.interpret || i.desc;
     return '<div class="card macro-card">' +
-      '<div class="sec-title" style="margin-bottom:6px"><h2>' + esc(i.name) + '</h2>' +
+      '<div class="sec-title"><h2>' + esc(i.name) + '</h2>' +
       '<div class="q-actions">' +
         impBadge(i.importance) +
         percentileBadge(i) +
@@ -494,7 +494,7 @@
         '<span class="th-val" style="color:' + c + '">' + (s.final == null ? '—' : s.final) + '</span></div>' +
         '<div class="th-bar"><div class="th-fill" style="width:' + barW + '%;background:' + c + '"></div>' +
         '<div class="th-mid"></div></div>' +
-        '<div class="th-sub muted">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）' +
+        '<div class="th-sub muted"><span class="th-sub-txt" title="自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 ' + (s.manual > 0 ? '+' : '') + s.manual + ' · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）</span>' +
         '<span class="th-adj">' +
           '<button class="icon-btn" title="人工下调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="-5">−</button>' +
           '<button class="icon-btn" title="人工上调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="5">＋</button>' +
@@ -783,7 +783,7 @@
     if(cur >= 0) verdict = '资金活化：企业活期资金活跃，利好权益';
     else if(narrowing) verdict = '剪刀差收窄中：资金开始从"存起来"转向"流动起来"，边际改善';
     else verdict = '资金存款化：企业资金活跃度弱，内需动能待改善';
-    return '<div class="card macro-scissors"><div class="sec-title" style="margin-bottom:6px">' +
+    return '<div class="card macro-scissors"><div class="sec-title">' +
       '<h2>✂️ M1−M2 剪刀差 <span class="muted" style="font-weight:400;font-size:12px">资金活化程度 · M1 ' + a.latest.toFixed(1) + '% − M2 ' + b.latest.toFixed(1) + '%</span></h2></div>' +
       '<div class="scissors-box"><span class="scissors-val ' + (d != null ? (d > 0 ? 'up' : 'down') : '') + '">' + (cur > 0 ? '+' : '') + cur.toFixed(1) + 'pp</span>' +
       (d != null ? '<span class="' + (d > 0 ? 'up' : 'down') + '" style="font-size:13px;font-weight:700">环比 ' + (d > 0 ? '↑' : '↓') + ' ' + Math.abs(d).toFixed(1) + 'pp</span>' : '') +
@@ -817,11 +817,11 @@
     h += regimeLxG();
 
     // 顶部快捷录入按钮
-    h += '<div style="margin:0 0 14px;display:flex;justify-content:flex-end">' +
+    h += '<div style="margin:0 0 16px;display:flex;justify-content:flex-end">' +
       '<button class="btn ghost sm" data-action="macro.quickDaily" title="一次性录入今天的全部日度指标">⚡ 每日快捷录入</button></div>';
 
     // 日期范围筛选
-    h += '<div class="chips" style="margin:0 0 14px">' +
+    h += '<div class="chips" style="margin:0 0 16px">' +
       MACRO_RANGES.map(r => '<button class="chip ' + ((state.macroRange||'5y') === r.key ? 'active' : '') + '" data-action="macro.fRange" data-v="' + r.key + '">' + r.label + '</button>').join('') +
       '<span class="muted" style="font-size:12px;margin-left:8px">所有图表按所选区间显示</span></div>';
 
