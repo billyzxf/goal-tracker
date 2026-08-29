@@ -93,23 +93,23 @@ INDICATORS = [
       [dict(type='fred', series='T10YIE')]),
     I('dxy', '美元指数 DXY', '', '日度', '海外与利率',
       '美元↑=全球美元流动性收紧，新兴市场承压、人民币贬值压力上升。',
-      [dict(type='stooq', symbols=['dx.f', '^dxy']),
+      [dict(type='yahoo', symbol='DX-Y.NYB'),
        dict(type='em_kline', secid='100.UDI', field='close'),
-       dict(type='yahoo', symbol='DX-Y.NYB')]),
+       dict(type='stooq', symbols=['dx.f', '^dxy'])]),
     I('oil', '原油（布伦特）', '美元', '日度', '海外与利率',
       '油价↑→通胀↑→美联储宽松空间↓→美债利率↑→估值承压。',
-      [dict(type='stooq', symbols=['cb.f', 'cl.f']),
-       dict(type='yahoo', symbol='BZ=F')]),
+      [dict(type='yahoo', symbol='BZ=F'),
+       dict(type='stooq', symbols=['cb.f', 'cl.f'])]),
     I('gold', '黄金', '美元', '日度', '海外与利率',
       '实际利率/美元/避险/央行购金的综合温度计，与实际利率负相关最稳定。',
-      [dict(type='stooq', symbols=['xauusd', 'gc.f']),
+      [dict(type='yahoo', symbol='GC=F'),
        dict(type='em_kline', secid='101.GC00Y', field='close'),
-       dict(type='yahoo', symbol='GC=F')]),
+       dict(type='stooq', symbols=['xauusd', 'gc.f'])]),
     I('copper', '铜（Doctor Copper）', '美元', '日度', '海外与利率',
       '全球工业周期风向标：电力/制造/地产/新能源需求同步指标。',
-      [dict(type='stooq', symbols=['hg.f']),
+      [dict(type='yahoo', symbol='HG=F'),
        dict(type='em_kline', secid='101.HG00Y', field='close'),
-       dict(type='yahoo', symbol='HG=F')]),
+       dict(type='stooq', symbols=['hg.f'])]),
     I('fed', '美联储政策利率', '%', '月度', '海外与利率',
       '美国短端利率之锚：加息→全球无风险利率↑→估值承压；降息反之（但要看降息原因）。',
       [dict(type='ak', fn='macro_bank_usa_interest_rate', date_col='日期', val_col='今值',
@@ -130,9 +130,9 @@ INDICATORS = [
     # ============ 中国流动性 / 汇率（表：国内宏观经济） ============
     I('usdcny', '人民币汇率 USDCNY', '', '日度', '海外与利率',
       '比绝对值更重要的是变化速度：快速贬值→央行政策空间受限→外资风险偏好下降。',
-      [dict(type='stooq', symbols=['usdcnh']),
-       dict(type='em_kline', secid='133.USDCNH', field='close'),
-       dict(type='yahoo', symbol='CNH=X')]),
+      [dict(type='em_kline', secid='133.USDCNH', field='close'),
+       dict(type='yahoo', symbol='CNH=X'),
+       dict(type='stooq', symbols=['usdcnh'])]),
     I('cn10y', '中国 10Y 国债收益率', '%', '日度', '海外与利率',
       '人民币资产定价锚。股债收益差的分母之一。',
       [dict(type='ak', fn='bond_zh_us_rate', date_col='日期', val_col='中国国债收益率10年', date_kind='day')]),
@@ -713,6 +713,37 @@ def load_existing(path):
     return existing
 
 
+def write_csv(path, store):
+    """按配置序输出 CSV（国内表 → 国际表；含旧数据保留键）。"""
+    out = io.StringIO()
+    out.write('\ufeff')
+    out.write('# GoalTracker 宏观经济数据（全部）\n')
+    written = set()
+    for tkey, tname in TABLE_NAMES.items():
+        block = []
+        for cfg in INDICATORS:
+            if table_of(cfg['key'], cfg['category']) == tkey and cfg['key'] in store and cfg['key'] not in written:
+                block.append(cfg['key'])
+        # 旧 CSV 里有、但配置已删除的键也保留（不丢历史）
+        for k, ent in store.items():
+            if k not in written and k not in block and table_of(k, ent.get('category', '')) == tkey:
+                block.append(k)
+        if not block:
+            continue
+        out.write('表,%s\n' % tname)
+        for key in block:
+            ent = store[key]
+            written.add(key)
+            out.write('指标,%s,%s,%s,%s,%s,%s\n' % (
+                esc_csv(key), esc_csv(ent.get('name', key)), esc_csv(ent.get('unit', '')),
+                esc_csv(ent.get('freq', '月度')), esc_csv(ent.get('category', '')), esc_csv(ent.get('desc', ''))))
+            for d, v in sorted(ent['points'].items()):
+                v_s = ('%f' % v).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
+                out.write('DATA,%s,%s,%s\n' % (key, d, v_s))
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        f.write(out.getvalue())
+
+
 def main():
     ap = argparse.ArgumentParser(description='多源抓取宏观数据 → 单个 CSV（增量合并）')
     ap.add_argument('--outdir', default=None)
@@ -767,35 +798,8 @@ def main():
             ok_keys.append(cfg['key'])
             print('  ✓ %-22s %-8s 新增 %d 期（共 %d）' % (cfg['name'], tkey, added, len(ent['points'])))
 
-    # 输出（配置序 = 国内表 → 国际表；含旧数据保留键）
-    out = io.StringIO()
-    out.write('\ufeff')
-    out.write('# GoalTracker 宏观经济数据（全部）\n')
-    written = set()
-    for tkey, tname in TABLE_NAMES.items():
-        block = []
-        for cfg in INDICATORS:
-            if table_of(cfg['key'], cfg['category']) == tkey and cfg['key'] in store and cfg['key'] not in written:
-                block.append(cfg['key'])
-        # 旧 CSV 里有、但配置已删除的键也保留（不丢历史）
-        for k, ent in store.items():
-            if k not in written and k not in block and table_of(k, ent.get('category', '')) == tkey:
-                block.append(k)
-        if not block:
-            continue
-        out.write('表,%s\n' % tname)
-        for key in block:
-            ent = store[key]
-            written.add(key)
-            out.write('指标,%s,%s,%s,%s,%s,%s\n' % (
-                esc_csv(key), esc_csv(ent.get('name', key)), esc_csv(ent.get('unit', '')),
-                esc_csv(ent.get('freq', '月度')), esc_csv(ent.get('category', '')), esc_csv(ent.get('desc', ''))))
-            for d, v in sorted(ent['points'].items()):
-                v_s = ('%f' % v).rstrip('0').rstrip('.') if isinstance(v, float) else str(v)
-                out.write('DATA,%s,%s,%s\n' % (key, d, v_s))
-
-    with open(path, 'w', encoding='utf-8', newline='') as f:
-        f.write(out.getvalue())
+    # 输出
+    write_csv(path, store)
 
     print('\n完成 → %s（本次新增 %d 条，共 %d 个指标；成功 %d / 失败 %d）'
           % (path, total_add, len(store), len(ok_keys), len(failed)))
