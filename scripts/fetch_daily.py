@@ -3,6 +3,9 @@ r"""
 每日增量抓取：只更新「日度 / 周度」指标，且只补 CSV 中缺失的日期（最小化请求量与耗时）。
 月度指标（GDP/CPI/PMI/LPR/M1/M2 等）不在本脚本范围，请用 fetch_macro_all.py（周/月跑一次即可）。
 
+日志：控制台 + <outdir>/fetch_daily.log（1MB 滚动、保留 3 份），
+每条记录含指标状态（新增/已是最新/失败/超时）与耗时。
+
 用法：
   py scripts/fetch_daily.py                # 日度+周度，只补缺失日期
   py scripts/fetch_daily.py --freq 日度    # 只更日度
@@ -16,9 +19,11 @@ r"""
 依赖：requests、pandas、akshare（与 fetch_macro_all.py 相同）
 """
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -34,6 +39,23 @@ fm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fm)
 
 DAILY_FREQS = ('日度', '周度')
+
+
+def setup_log(outdir):
+    """控制台 + 滚动文件双写；文件记录完整状态便于事后排查。"""
+    log = logging.getLogger('fetch_daily')
+    log.setLevel(logging.INFO)
+    fmt = logging.Formatter('%(asctime)s %(levelname)-7s %(message)s', datefmt='%F %T')
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(fmt)
+    log.addHandler(ch)
+
+    fh = RotatingFileHandler(os.path.join(outdir, 'fetch_daily.log'),
+                             maxBytes=1024 * 1024, backupCount=3, encoding='utf-8')
+    fh.setFormatter(fmt)
+    log.addHandler(fh)
+    return log
 
 
 def main():
@@ -54,10 +76,13 @@ def main():
             os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'macro'))
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, '宏观经济_全部数据.csv')
+    log = setup_log(outdir)
+
+    run_t0 = datetime.now()
+    log.info('── 每日增量开始：%d 个指标（%s）%s → %s',
+             len(targets), '/'.join(freqs), '【force 重抓】' if args.force else '【只补缺失日期】', path)
 
     store = fm.load_existing(path)
-    print('[%s] 每日增量：%d 个指标（%s）→ %s'
-          % (datetime.now().strftime('%F %T'), len(targets), '/'.join(freqs), path))
 
     total_new = 0
     ok, failed = [], []
@@ -68,6 +93,7 @@ def main():
         ent.update(name=cfg['name'], unit=cfg['unit'], freq=cfg['freq'],
                    category=cfg['category'], desc=cfg['desc'])
         have = ent['points']
+        t0 = datetime.now()
         try:
             # 日常增量只需近几天的数据：chinamoney 等逐日请求源把回补窗口压到 14 天
             chain = []
@@ -75,12 +101,12 @@ def main():
                 if st['type'] == 'chinamoney' and st.get('days', 0) > 14:
                     st = dict(st, days=14)
                 chain.append(st)
-            t0 = datetime.now()
             # 单指标看门狗 600s：即使数据源在 socket 层挂死也能跳过继续
             pts = fm._run_with_timeout(lambda: fm.fetch_chain(dict(cfg, chain=chain)), timeout=600)
         except Exception as e:   # noqa: BLE001
-            print('  ❌ %-20s %s' % (cfg['name'], str(e)[:80]))
-            failed.append(cfg['key'])
+            cost = (datetime.now() - t0).total_seconds()
+            log.error('❌ %-20s 失败（耗时 %.1fs）：%s', cfg['name'], cost, str(e)[:100])
+            failed.append((cfg['key'], cost))
             continue
         added = 0
         for d, v in sorted(pts):
@@ -88,21 +114,23 @@ def main():
                 continue            # 已有日期直接跳过，不做重复请求落盘
             have[d] = v
             added += 1
+        cost = (datetime.now() - t0).total_seconds()
+        ok.append((cfg['key'], cost))
         if added:
-            ok.append(cfg['key'])
             total_new += added
-            print('  ✓ %-20s 新增 %d 期（最新 %s，共 %d）'
-                  % (cfg['name'], added, sorted(have)[-1], len(have)))
+            log.info('✓ %-20s 新增 %3d 期（最新 %s，共 %d，耗时 %.1fs）',
+                     cfg['name'], added, sorted(have)[-1], len(have), cost)
         else:
-            ok.append(cfg['key'])
-            print('  ✓ %-20s 已是最新（共 %d 期，耗时 %.0fs）'
-                  % (cfg['name'], len(have), (datetime.now() - t0).total_seconds()))
+            log.info('✓ %-20s 已是最新（共 %d 期，耗时 %.1fs）', cfg['name'], len(have), cost)
 
     fm.write_csv(path, store)
 
-    print('\n完成：新增 %d 条；成功 %d / 失败 %d' % (total_new, len(ok), len(failed)))
+    run_cost = (datetime.now() - run_t0).total_seconds()
+    log.info('── 完成：新增 %d 条；成功 %d / 失败 %d；总耗时 %.0fs',
+             total_new, len(ok), len(failed), run_cost)
     if failed:
-        print('失败（下次自动重试）：%s' % ', '.join(failed))
+        log.warning('失败（下次自动重试）：%s',
+                    ', '.join('%s(%.0fs)' % (k, c) for k, c in failed))
     # 全部失败视为异常（便于 CI/计划任务告警），部分失败返回 0
     return 1 if (failed and not ok) else 0
 
