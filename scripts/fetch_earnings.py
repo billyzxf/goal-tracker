@@ -69,7 +69,7 @@ OUT_COLUMNS = [
     '股票代码', '公司名称', '行业', '板块', '林奇类型',
     '披露日期', '报告期', '季度',
     '营业收入', '营收同比', '毛利润', '净利润', '扣非净利润', '扣非净利同比',
-    '经营现金流', '资本开支', 'ROE', '毛利率',
+    '经营现金流', '销售收现', '资本开支', 'ROE', '毛利率',
     '预期营收', '预期净利', '预期营收同比', '预期净利同比',
 ]
 
@@ -227,6 +227,9 @@ def _enrich_financials(em, row, latest):
                     capex = to_yi(r.get('CONSTRUCT_LONG_ASSET'))
                     if capex is not None:
                         row['资本开支'] = round(capex, 4)
+                    ss = to_yi(r.get('SALES_SERVICES'))   # 销售商品、提供劳务收到的现金
+                    if ss is not None:
+                        row['销售收现'] = round(ss, 4)
                     break
     except Exception:   # noqa: BLE001
         pass
