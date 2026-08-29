@@ -568,7 +568,7 @@
     else {
       const displayMetrics = METRICS.map(m => ({...m}));
       customMetrics().forEach(cm => displayMetrics.push({ ...cm, source:'custom', category:'自定义' }));
-      h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr><th>季度</th>';
+      h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr><th>季度</th>';
       displayMetrics.forEach(mi => {
         // 表头保留单位后缀（总资产(亿)、ROE(%)…），数据单元格里不再重复带单位
         h += '<th class="num" title="' + esc(mi.desc||mi.label) + '">' + esc(mi.label) +
@@ -594,7 +594,7 @@
     const vals = (c.valuations||[]).slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
     if(!vals.length) h += '<div class="empty">还没有估值记录</div>';
     else {
-      h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+      h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
         '<th>日期</th><th>方法</th><th>参数</th><th class="num">估算价值</th><th class="num">实际股价</th><th class="num">安全边际</th><th>备注</th><th></th>' +
         '</tr></thead><tbody>';
       h += vals.map(v => {
@@ -629,7 +629,7 @@
     const invs = (c.investments||[]).slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
     if(!invs.length) h += '<div class="empty">还没有投资记录</div>';
     else {
-      h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+      h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
         '<th>日期</th><th>操作</th><th class="num">价格</th><th class="num">股数</th><th class="num">金额</th><th>备注</th><th></th>' +
         '</tr></thead><tbody>';
       h += invs.map(inv => {
@@ -714,7 +714,7 @@
     // —— 1) 一致预期（按年份，营收/净利） ——
     if((fc.consensus||[]).length){
       h += '<div class="fc-block"><div class="fc-title">一致预期（营收/净利）</div>' +
-        '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+        '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
         '<th>年份</th><th>类型</th><th class="num">EPS</th><th class="num">PE</th><th class="num">ROE%</th>' +
         '<th class="num">营收(亿)</th><th class="num">净利(亿)</th><th class="num">营收同比%</th><th class="num">净利同比%</th>' +
         '</tr></thead><tbody>';
@@ -734,7 +734,7 @@
     if(!detail3.length){
       h += '<div class="empty">近 3 个月无券商更新预测</div>';
     } else {
-      h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+      h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
         '<th>券商</th><th>分析师</th><th>报告日期</th><th>评级</th>' +
         '<th class="num">年份</th><th class="num">EPS</th><th class="num">净利(亿)</th>' +
         '<th class="num">年份</th><th class="num">EPS</th><th class="num">净利(亿)</th>' +
@@ -762,7 +762,7 @@
     if(!eps3.length){
       h += '<div class="empty">近 3 个月无机构一致预期更新</div>';
     } else {
-      h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+      h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
         '<th>机构</th><th>报告日期</th>' +
         '<th class="num">年份</th><th class="num">EPS</th><th class="num">PE</th>' +
         '<th class="num">年份</th><th class="num">EPS</th><th class="num">PE</th>' +

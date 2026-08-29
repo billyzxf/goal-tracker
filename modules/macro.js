@@ -400,7 +400,7 @@
   function tableHtml(i){
     const pts = filterByRange(i.points).slice().sort((a,b) => b.date.localeCompare(a.date));
     if(!pts.length) return '<div class="empty">该区间内还没有数据，点击「添加数据」</div>';
-    let h = '<div style="overflow-x:auto"><table class="val-table"><thead><tr><th>时间</th><th class="num">' + esc(i.name) + (i.unit ? ' (' + esc(i.unit) + ')' : '') + '</th><th class="num">环比变化</th><th></th></tr></thead><tbody>';
+    let h = '<div class="wide-table-wrap"><table class="val-table"><thead><tr><th>时间</th><th class="num">' + esc(i.name) + (i.unit ? ' (' + esc(i.unit) + ')' : '') + '</th><th class="num">环比变化</th><th></th></tr></thead><tbody>';
     pts.forEach((p, idx) => {
       const next = pts[idx+1]; // 更早的一个点（表已倒序）
       let d = '';
@@ -582,7 +582,7 @@
     };
     let h = '<div class="card macro-rot"><div class="sec-title" style="margin-bottom:8px">' +
       '<h2>🔄 宏观 → 行业轮动映射 <span class="muted" style="font-weight:400;font-size:12px">高亮 = 该方向当前成立（按最新环比）</span></h2></div>' +
-      '<div style="overflow-x:auto"><table class="val-table"><thead><tr><th>宏观方向</th><th>受益行业</th></tr></thead><tbody>';
+      '<div class="wide-table-wrap"><table class="val-table"><thead><tr><th>宏观方向</th><th>受益行业</th></tr></thead><tbody>';
     ROTATION.forEach(r => {
       const on = active(r);
       h += '<tr' + (on ? ' class="rot-on"' : '') + '><td>' + esc(r.label) + (on ? ' <span class="badge green">✓</span>' : '') + '</td>' +
@@ -631,7 +631,7 @@
       '<h2>🧭 FedWatch 利率概率 <span class="muted" style="font-weight:400;font-size:12px">市场对未来利率路径的重新定价 · 比 FOMC 结果更重要</span></h2>' +
       '<button class="btn ghost sm" data-action="macro.fwAdd">＋ 记录</button></div>';
     if(!list.length) return h + '<div class="empty">暂无记录 · 从 CME FedWatch 查询未来 FOMC 会议的降息/不变/加息概率后录入</div></div>';
-    h += '<div style="overflow-x:auto"><table class="val-table"><thead><tr>' +
+    h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
       '<th>FOMC 会议</th><th class="num">降息 %</th><th class="num">不变 %</th><th class="num">加息 %</th><th>更新</th><th></th></tr></thead><tbody>';
     list.forEach(n => {
       const dsum = (n.cut||0)+(n.hold||0)+(n.hike||0);
