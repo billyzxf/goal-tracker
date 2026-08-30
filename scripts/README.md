@@ -15,7 +15,7 @@
 | `eastmoney.py` | 东方财富接口客户端（财务/利润/资产负债/现金流/行情/宏观） | - |
 | `fetch_financial.py` | 抓取公司财务数据 → 财务 CSV | `data/financial/` |
 | `fetch_earnings.py` | 按披露日期批量抓取最新财报 → 财报跟踪 CSV | `data/earnings/` |
-| `fetch_prices.py` | 批量更新全部公司当前股价 → 写回 goal-tracker-data.json | 直接写 JSON |
+| `fetch_prices.py` | 批量拉取行情快照（现价/涨跌/PE/成交等）→ 股价 CSV | `data/prices/` |
 | `fetch_macro_all.py` | 统一宏观脚本（东财+akshare 全部指标，支持增量） | `data/macro/` |
 | `fetch_macro.py` | 东财宏观指标（GDP/CPI/PPI/PMI 等） | `data/macro/` |
 | `fetch_macro_ak.py` | akshare 宏观指标（债务/货币/国际） | `data/macro/` |
@@ -30,6 +30,8 @@ data/
 ├── earnings/      # 财报跟踪 CSV（财报跟踪_YYYYMMDD.csv）
 ├── macro/         # 宏观经济数据 CSV（宏观经济_全部数据.csv 等）
 ├── forecast/      # 盈利预测 CSV（盈利预测_{代码}_{公司名}.csv）
+├── prices/        # 行情快照 CSV（当前股价_YYYYMMDD.csv，按日期存档）
+├── 公司列表_当前汇总.csv   # 公司列表（估值模块「⬇ 导出公司列表」生成，--auto 的默认公司来源）
 ├── goal-tracker-data.json   # 主数据文件（可被脚本直接更新）
 └── 公司财务数据_累计.xlsx     # 其他
 ```
@@ -41,8 +43,9 @@ data/
 ### 1. 财务数据（估值模块）→ `data/financial/`
 
 ```bash
-# 从 data/goal-tracker-data.json 读取全部公司，抓取最近 9 期并保存 CSV
-py fetch_financial.py --auto
+# 自动模式（推荐）：读取 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成），
+# 抓取最近 18 期并保存 CSV；文件不存在时回退：JSON → 扫描已有 CSV
+py fetch_financial.py --auto --quarters 18
 
 # 只抓取单只
 py fetch_financial.py --ticker 688256.SH
@@ -50,14 +53,14 @@ py fetch_financial.py --ticker 688256.SH
 # 抓取多只（逗号分隔）
 py fetch_financial.py --tickers 601138.SH,000977.SZ,300308.SZ
 
-# 指定抓取期数（默认最近 9 期）
-py fetch_financial.py --auto --quarters 12
+# 从任意公司列表 CSV 批量抓取（兼容估值模块导出 / 财报跟踪导出格式，列：股票代码[,公司名称]）
+py fetch_financial.py --from-csv 公司列表.csv
 
-# 指定公司列表来源 / 输出目录
+# 指定公司列表来源 JSON / 输出目录
 py fetch_financial.py --auto --json 其他数据.json --outdir 目标目录
 ```
 
-生成：`data/financial/{ticker}_{公司名}.csv`，与估值模块「⬇ 导出 / ⬆ 导入 CSV」完全兼容。
+生成：`data/financial/{ticker}_{公司名}.csv`，与估值模块「⬆ 批量导入财务 / 详情页 ⬆ 导入 CSV」完全兼容。
 
 CSV 包含的列（顺序固定，与前端一致）：总资产、所有者权益、营业收入、**营收同比%**、毛利润、净利润、扣非净利润、**扣非净利润同比%**、经营现金流、资本开支、ROE、毛利率、净利率、资产负债率、总资产周转率。同比字段取自东方财富核心财务指标接口的累计值同比（如 Q2 = 上半年累计 vs 去年同期上半年）。
 
@@ -123,9 +126,13 @@ py fetch_earnings.py --date 2026-08-12 --all-market
 财报跟踪_20260801-20260831.csv     # --start/--end 日期范围
 ```
 
-**CSV 列**：股票代码、公司名称、行业、板块、林奇类型、披露日期、报告期、季度、营业收入(亿)、**营收同比%**、毛利润(亿)、净利润(亿)、扣非净利润(亿)、**扣非净利同比%**、经营现金流(亿)、资本开支(亿)、ROE、毛利率，以及**当年一致预期**（财报发布年份）：预期营收(亿)、预期净利(亿)、预期营收同比%、预期净利同比%。
+**CSV 列**：股票代码、公司名称、行业、板块、林奇类型、披露日期、报告期、季度、营业收入(亿)、**营收同比%**、毛利润(亿)、净利润(亿)、扣非净利润(亿)、**扣非净利同比%**、经营现金流(亿)、**销售收现(亿)**、资本开支(亿)、ROE、毛利率，以及**当年一致预期**（财报发布年份）：预期营收(亿)、预期净利(亿)、预期营收同比%、预期净利同比%。
 
-**导入**：前端「财报跟踪」→ 「⬆ 导入财报 CSV」→ 可多选文件分别导入分析。支持按任意指标排序（点击列头）、按行业/板块筛选、一键剔除营收同比 < 20% 的公司；「超预期」列 = 实际营收同比 − 预期营收同比（正=财报超预期）。
+**导入**：前端「财报跟踪」→ 「⬆ 导入财报 CSV」→ 可多选文件分别导入分析。支持按任意指标排序（点击列头，含披露日期/季度）、行业/板块**多选**筛选、L1 真实性五项规则独立勾选组合（扣非净利同比、扣非/净利比、TTM 净现比、收现比 = 销售收现÷营收 等，chip 上实时显示满足家数）；「超预期」列 = 实际营收同比 − 预期营收同比（正=财报超预期）。
+
+**导出**（均弹出另存为对话框）：
+- 「⬇ 导出 CSV」：导出满足全部筛选条件的公司及指标数据，可回导
+- 「⬇ 导出公司列表」：导出估值模块「⬆ 导入公司列表」可直接使用的公司列表 CSV
 
 > 说明：
 > - 披露日期取自东方财富业绩报表接口（`RPT_LICO_FN_CPD`），即财报实际发布日。
@@ -134,27 +141,27 @@ py fetch_earnings.py --date 2026-08-12 --all-market
 > - 一致预期取自东财 F10 盈利预测接口（`fetch_profit_forecast.py` 同源），按财报发布年份取当年券商一致预期。
 > - 指定公司列表来源 JSON / 输出目录：`py fetch_earnings.py --json 其他数据.json --outdir 目标目录`。
 
-### 1b. 更新当前股价（估值模块）→ 生成股价 CSV，浏览器批量导入
+### 1b. 行情快照（估值模块）→ 生成股价 CSV（按日期存档），浏览器批量导入
 
-无需在浏览器手动一个个更新股价。运行脚本批量拉取现价，生成一个「股价 CSV」到 `data/prices/当前股价.csv`，再在浏览器「⬆ 批量导入 CSV」选择它即可批量更新全部公司的 `currentPrice`（脚本不修改 JSON）：
+无需在浏览器手动一个个更新股价。运行脚本批量拉取行情快照，生成「股价 CSV」到 `data/prices/当前股价_YYYYMMDD.csv`（按日期存档，保留历史），再在浏览器「公司估值 → ⬆ 导入股价」选择它即可批量更新（脚本不修改 JSON）：
 
 ```bash
-# 从默认 data/goal-tracker-data.json 读取公司列表，生成股价 CSV
+# 从 data/goal-tracker-data.json 读取公司列表，生成当日行情快照 CSV
 py fetch_prices.py
 
-# 指定公司列表来源 JSON（根目录数据用这个）
+# 指定公司列表来源 JSON
 py fetch_prices.py --json ../goal-tracker-data.json
 
 # 指定输出目录 / 文件名
 py fetch_prices.py --outdir ../data/prices --out 当前股价.csv
 
-# 只预览将写入的价格，不写文件
+# 只预览将写入的行情，不写文件
 py fetch_prices.py --dry-run
 ```
 
-- 使用东方财富批量行情接口（延时约 15 分钟），一次拉取全部公司现价。
-- 生成 `data/prices/当前股价.csv`（格式：`股票代码,公司,现价`），不改 JSON。
-- 导入：公司估值 → 「⬆ 批量导入 CSV」→ 选该 CSV，会自动按代码/名称匹配并更新 `currentPrice`。
+- 使用东方财富批量行情接口（延时约 15 分钟），一次拉取全部公司行情。
+- 生成 `data/prices/当前股价_YYYYMMDD.csv`，列：`股票代码,公司,现价,涨跌额,涨跌幅%,市盈率(动),市净率,换手率%,成交量(手),成交额(亿),总市值(亿),流通市值(亿),总股本(亿股)`（总股本由总市值÷现价推算）。
+- 导入：公司估值 → 「⬆ 导入股价」→ 选当日 CSV，自动更新 `currentPrice`、补全 `totalShares`，并带出行情快照（涨跌/市盈率/市净率/换手率/成交额/总市值），显示在公司卡片「📈 实时行情」组和公司详情页上方。
 
 ### 2. 宏观数据（宏观模块）→ `data/macro/`
 
@@ -179,14 +186,21 @@ py fetch_macro_ak.py                  # akshare 债务/货币/国际
 
 ### 3. 盈利预测（公司估值盈利预测模块）→ `data/forecast/` + 写入 JSON
 
-**更新全量公司（推荐）**：从 `goal-tracker-data.json` 读取全部公司，抓取盈利预测并写入 JSON，同时生成 CSV。
+**更新全量公司（推荐）**：`--auto` 读取 `data/公司列表_当前汇总.csv`（估值模块「⬇ 导出公司列表」生成）获取全部公司；文件不存在时回退 `goal-tracker-data.json`。
 
 ```bash
-# 全量更新：抓取所有公司 + 写入 JSON + 生成 CSV
+# 自动模式（推荐）：抓取汇总列表全部公司 + 生成 CSV；加 --update-json 同时写入 JSON
+py fetch_profit_forecast.py --auto
+py fetch_profit_forecast.py --auto --update-json
+
+# 全量更新（JSON 来源）：抓取所有公司 + 写入 JSON + 生成 CSV
 py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json
 
 # 全量更新：只写 JSON，不生成 CSV
 py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json --no-csv
+
+# 从任意公司列表 CSV 批量抓取（兼容估值模块导出 / 财报跟踪导出格式）
+py fetch_profit_forecast.py --from-csv 公司列表.csv
 ```
 
 **更新单个公司**：
@@ -210,12 +224,23 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 
 ## 导入到 GoalTracker
 
-1. **财务数据**：公司估值 → 该公司详情 → 「财务数据」→ 「⬆ 导入 CSV」→ 选 `data/financial/{ticker}_{名}.csv`
-2. **财报跟踪**：财报跟踪 → 「⬆ 导入财报 CSV」→ 可多选 `data/earnings/` 下的多个 CSV（不同日期/类别分别导入分析）
-3. **宏观数据**：宏观经济 → 顶部「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
+1. **财务数据**：公司估值 → 该公司详情 → 「财务数据」→ 「⬆ 导入 CSV」→ 选 `data/financial/{ticker}_{名}.csv`；或「⬆ 批量导入财务」多选批量导入
+2. **行情快照**：公司估值 → 「⬆ 导入股价」→ 选 `data/prices/当前股价_YYYYMMDD.csv`（批量更新现价/总股本，并显示涨跌/市盈率等行情快照）
+3. **财报跟踪**：财报跟踪 → 「⬆ 导入财报 CSV」→ 可多选 `data/earnings/` 下的多个 CSV（不同日期/类别分别导入分析）
+4. **宏观数据**：宏观经济 → 顶部「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
    - 导出：「⬇ 导出全部」→ `宏观经济_全部数据.csv`
-3. **盈利预测**：公司估值 → 该公司详情 → 「📈 盈利预测」→ 「⬆ 导入预测」→ 选 `data/forecast/盈利预测_{代码}_{名}.csv`
-   - 导出：「⬇ 导出预测」
+5. **盈利预测**：公司估值 → 「⬆ 批量导入预测」多选 `data/forecast/` 下全部 CSV（按代码/名称自动匹配公司）；单家公司也可在详情 → 「📈 盈利预测」→「⬆ 导入预测」导入
+   - 导出：详情页「⬇ 导出预测」
+
+### 新批次公司完整工作流
+
+```
+财报跟踪筛选 → 「⬇ 导出公司列表」→ 公司估值「⬆ 导入公司列表」批量建卡
+→ 导出文件另存/覆盖为 data/公司列表_当前汇总.csv
+→ py scripts/fetch_financial.py --auto --quarters 18      （抓财务）
+→ py scripts/fetch_profit_forecast.py --auto              （抓盈利预测）
+→ 公司估值「⬆ 批量导入财务」（多选财务 CSV）+「⬆ 批量导入预测」（多选盈利预测 CSV）
+```
 
 > 若用 `--update-json` 直接更新了 `goal-tracker-data.json`，需在浏览器「⬆ 导入数据」重新导入该 JSON（会覆盖 IndexedDB，建议先「⬇ 导出备份」）。
 

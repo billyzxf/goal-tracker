@@ -157,9 +157,13 @@
    * format : 数字格式化函数（默认保留 1~2 位小数；负数显示负号）
    */
   const SUMMARY_METRICS = [
-    { key:'grossMargin',    label:'毛利率',     unit:'%' },
-    { key:'assetLiabRatio', label:'资产负债率', unit:'%' },
-    { key:'roe',            label:'ROE',        unit:'%' },
+    { key:'revenue',              label:'营业收入',     unit:'亿' },
+    { key:'revenueYoy',           label:'营收同比',     unit:'%' },
+    { key:'deductedNetProfit',    label:'扣非净利润',   unit:'亿' },
+    { key:'deductedNetProfitYoy', label:'扣非净利同比', unit:'%' },
+    { key:'roe',                  label:'ROE',          unit:'%' },
+    { key:'grossMargin',          label:'毛利率',       unit:'%' },
+    { key:'netMargin',            label:'净利率',       unit:'%' },
   ];
   function getLatestFin(c){
     // 取最近一个季度（按 quarter 字符串字典序倒序，取首个）
@@ -401,22 +405,10 @@
     }
     const companies = DB.valuation.companies;
     let list = companies.slice();
-    // 按板筛选：state.valBoard='全部' 显示全部；否则只显示对应板（c.board 匹配的）
-    // 兼容：旧 state.valMarket 值（A股/港股/美股/其他）如果还在，回退为'全部'，避免没有 chip active
-    if(!['全部', ...VAL_BOARD_FILTER].includes(state.valBoard)) state.valBoard = '全部';
-    if(state.valBoard !== '全部') list = list.filter(c => c.board === state.valBoard);
-    // 按行业筛选：state.valIndustry='全部' 显示全部；否则只显示对应行业（c.industry 匹配的）
-    const usedIndustries = [...new Set(companies.map(c => c.industry).filter(Boolean))];
-    if(state.valIndustry && state.valIndustry !== '全部' && !usedIndustries.includes(state.valIndustry)){
-      state.valIndustry = '全部';   // 行业列表中已不存在的筛选值回退为全部
-    }
-    if(state.valIndustry && state.valIndustry !== '全部') list = list.filter(c => c.industry === state.valIndustry);
-    // 按林奇公司类型筛选：state.valLynchType='全部' 显示全部；否则只显示对应类型（c.companyType 匹配的）
-    const usedLynch = [...new Set(companies.map(c => c.companyType).filter(Boolean))];
-    if(state.valLynchType && state.valLynchType !== '全部' && !usedLynch.includes(state.valLynchType)){
-      state.valLynchType = '全部';
-    }
-    if(state.valLynchType && state.valLynchType !== '全部') list = list.filter(c => c.companyType === state.valLynchType);
+    // 三组筛选均为多选（与财报跟踪模块一致）：数组为空 = 全部，选中项之间 OR、组之间 AND
+    if(state.valBoards && state.valBoards.length) list = list.filter(c => state.valBoards.includes(c.board));
+    if(state.valIndustries && state.valIndustries.length) list = list.filter(c => state.valIndustries.includes(c.industry));
+    if(state.valLynchs && state.valLynchs.length) list = list.filter(c => state.valLynchs.includes(c.companyType));
 
     let totalPos = 0, totalCost = 0, totalRealized = 0, totalMv = 0;
     companies.forEach(c => {
@@ -429,16 +421,20 @@
     const totalPnl = totalMv - totalCost;
 
     let h = header('📈 公司估值', '追踪关注公司的财务数据与估值 · 共 ' + companies.length + ' 家',
-      '<button class="btn ghost sm" data-action="val.importPrices" title="导入最新股价 CSV（data/prices/当前股价.csv），批量更新全部公司现价">⬆ 导入股价</button>' +
-      '<button class="btn ghost sm" data-action="val.exportAllCsv" title="导出全部公司的财务数据 CSV，文件名：{股票代码}_{公司名}.csv（如 688256.SH_寒武纪.csv）">⬇ 导出全部 CSV</button>' +
-      '<button class="btn ghost sm" data-action="val.importAllCsv" title="批量导入财务数据 CSV，文件名：{股票代码}_{公司名}.csv，可多选。\n这些文件可由 scripts/fetch_financial.py 从东方财富自动抓取生成">⬆ 批量导入 CSV</button>' +
+      '<button class="btn ghost sm" data-action="val.importCompanies" title="导入公司列表 CSV 批量添加公司（兼容估值模块导出的列表格式、财报跟踪导出的筛选结果格式），按股票代码去重">⬆ 导入公司列表</button>' +
+      '<button class="btn ghost sm" data-action="val.exportCompanies" title="导出全部公司基础信息为 CSV（股票代码/名称/市场/板块/行业/类型等），可直接作为 fetch_financial.py --from-csv 的输入">⬇ 导出公司列表</button>' +
+      '<button class="btn ghost sm" data-action="val.importPrices" title="导入行情快照 CSV（fetch_prices.py 生成：当前股价_日期.csv），批量更新现价/总股本，并带出涨跌/市盈率(动)/市净率/换手率/成交额/总市值显示在详情页上方">⬆ 导入股价</button>' +
+      '<button class="btn ghost sm" data-action="val.importAllCsv" title="批量导入财务数据 CSV，文件名：{股票代码}_{公司名}.csv，可多选。\n这些文件可由 scripts/fetch_financial.py 从东方财富自动抓取生成">⬆ 批量导入财务</button>' +
+      '<button class="btn ghost sm" data-action="val.importForecastAll" title="批量导入盈利预测 CSV（文件名：盈利预测_{代码}_{公司名}.csv，可多选；由 scripts/fetch_profit_forecast.py 生成），按代码/名称自动匹配公司">⬆ 批量导入预测</button>' +
       '<button class="btn primary" style="background:var(--indigo)" data-action="val.addCompany">＋ 添加公司</button>');
 
     // —— 导入导出说明 ——
     h += '<div class="import-help">' +
       '<b>📦 数据导入 / 导出</b>' +
-      '<span>📈 股价：运行 <code>py scripts/fetch_prices.py --json ../goal-tracker-data.json</code> 生成 <code>data/prices/当前股价.csv</code>，再点「⬆ 导入股价」批量更新现价。</span>' +
-      '<span>📊 财务：文件 <code>{股票代码}_{公司名}.csv</code>，如 <code>688256.SH_寒武纪.csv</code>；运行 <code>py scripts/fetch_financial.py --auto</code> 抓取后「⬆ 批量导入 CSV」。</span>' +
+      '<span>📈 行情：运行 <code>py scripts/fetch_prices.py</code> 生成 <code>data/prices/当前股价_日期.csv</code>（含现价/涨跌/市盈率(动)/市净率/换手率/成交额/总市值/总股本，按日期存档），「⬆ 导入股价」后详情页上方展示行情快照。</span>' +
+      '<span>📊 财务：文件 <code>{股票代码}_{公司名}.csv</code>，如 <code>688256.SH_寒武纪.csv</code>；运行 <code>py scripts/fetch_financial.py --auto</code> 抓取后「⬆ 批量导入财务」。</span>' +
+      '<span>📈 盈利预测：文件 <code>盈利预测_{代码}_{公司名}.csv</code>；运行 <code>py scripts/fetch_profit_forecast.py --auto</code> 抓取后「⬆ 批量导入预测」批量导入。</span>' +
+      '<span>🆕 新批次公司：「⬆ 导入公司列表」批量添加（支持财报跟踪导出的筛选结果）→ <code>py scripts/fetch_financial.py --from-csv 公司列表.csv</code> 抓财务、<code>py scripts/fetch_profit_forecast.py --from-csv 公司列表.csv</code> 抓预期 → 「⬆ 批量导入财务」。</span>' +
       '</div>';
 
     h += '<div class="val-summary-grid">';
@@ -449,22 +445,29 @@
     h += '<div class="val-stat"><div class="vs-label">已实现盈亏</div><div class="vs-value ' + (totalRealized >= 0 ? 'up' : 'down') + '">' + fmtMoney(totalRealized) + '</div></div>';
     h += '</div>';
 
+    // 板块筛选 chips（多选：点击选中/取消，不选 = 全部）
+    const selBoards = state.valBoards || [];
     h += '<div class="chips" style="margin-bottom:10px">' +
-      ['全部'].concat(VAL_BOARD_FILTER).map(b => '<button class="chip ' + (state.valBoard === b ? 'active' : '') + '" data-action="val.fBoard" data-v="' + b + '">' + b + (b === '全部' ? '（' + companies.length + '）' : '（' + companies.filter(c => c.board === b).length + '）') + '</button>').join('') + '</div>';
-    // 行业筛选 chips（按申万一级行业顺序，只显示实际存在的行业）
+      '<button class="chip ' + (selBoards.length ? '' : 'active') + '" data-action="val.fBoardClear">全部（' + companies.length + '）</button>' +
+      VAL_BOARD_FILTER.map(b => '<button class="chip ' + (selBoards.includes(b) ? 'active' : '') + '" data-action="val.fBoard" data-v="' + b + '">' + b + '（' + companies.filter(c => c.board === b).length + '）</button>').join('') + '</div>';
+    // 行业筛选 chips（多选，按申万一级行业顺序，只显示实际存在的行业）
+    const usedIndustries = [...new Set(companies.map(c => c.industry).filter(Boolean))];
     const indList = VAL_INDUSTRIES.filter(i => usedIndustries.includes(i)).concat(
       usedIndustries.filter(i => !VAL_INDUSTRIES.includes(i)));   // 未在标准列表中的行业附加在后面
+    const selInd = state.valIndustries || [];
     h += '<div class="chips" style="margin-bottom:16px">' +
-      '<button class="chip ' + (state.valIndustry === '全部' || !state.valIndustry ? 'active' : '') + '" data-action="val.fIndustry" data-v="全部">全部（' + companies.length + '）</button>' +
-      indList.map(i => '<button class="chip ' + (state.valIndustry === i ? 'active' : '') + '" data-action="val.fIndustry" data-v="' + esc(i) + '">' + i + '（' + companies.filter(c => c.industry === i).length + '）</button>').join('') + '</div>';
-    // 林奇公司类型筛选 chips（按 VAL_LYNCH_TYPES 顺序，只显示实际存在的类型）
+      '<button class="chip ' + (selInd.length ? '' : 'active') + '" data-action="val.fIndustryClear">全部（' + companies.length + '）</button>' +
+      indList.map(i => '<button class="chip ' + (selInd.includes(i) ? 'active' : '') + '" data-action="val.fIndustry" data-v="' + esc(i) + '">' + i + '（' + companies.filter(c => c.industry === i).length + '）</button>').join('') + '</div>';
+    // 林奇公司类型筛选 chips（多选，按 VAL_LYNCH_TYPES 顺序，只显示实际存在的类型）
+    const usedLynch = [...new Set(companies.map(c => c.companyType).filter(Boolean))];
     const usedLynchList = VAL_LYNCH_TYPES.map(t => t.key).filter(k => usedLynch.includes(k)).concat(
       usedLynch.filter(k => !VAL_LYNCH_TYPES.some(t => t.key === k)));
+    const selLynch = state.valLynchs || [];
     h += '<div class="chips" style="margin-bottom:16px">' +
-      '<button class="chip ' + (state.valLynchType === '全部' || !state.valLynchType ? 'active' : '') + '" data-action="val.fLynch" data-v="全部">全部（' + companies.length + '）</button>' +
+      '<button class="chip ' + (selLynch.length ? '' : 'active') + '" data-action="val.fLynchClear">全部（' + companies.length + '）</button>' +
       usedLynchList.map(k => {
         const desc = LYNCH_TYPE_DESC[k] ? ' title="' + esc(LYNCH_TYPE_DESC[k]) + '"' : '';
-        return '<button class="chip ' + (state.valLynchType === k ? 'active' : '') + '" data-action="val.fLynch" data-v="' + esc(k) + '"' + desc + '>' + k + '（' + companies.filter(c => c.companyType === k).length + '）</button>';
+        return '<button class="chip ' + (selLynch.includes(k) ? 'active' : '') + '" data-action="val.fLynch" data-v="' + esc(k) + '"' + desc + '>' + k + '（' + companies.filter(c => c.companyType === k).length + '）</button>';
       }).join('') + '</div>';
 
     if(!list.length){ h += '<div class="card"><div class="empty">该市场下暂无公司，点击右上角添加</div></div>'; return h; }
@@ -477,28 +480,44 @@
       const latestVal = (c.valuations || []).slice().sort((a,b) => (b.date||'').localeCompare(a.date||''))[0];
       const mos = latestVal ? calcMoS(latestVal.estimatedValue, c.currentPrice || latestVal.actualPrice) : null;
       const marketBadge = { 'A股':'indigo', '港股':'pink', '美股':'green', '其他':'gray' }[c.market || 'A股'] || 'gray';
-      let stats = '';
+      // ---- 卡片指标分 3 组展示：实时行情 / 最新财务数据 / 估值数据 ----
+      // ① 实时行情：最新股价 + 涨跌（行情快照来自「⬆ 导入股价」），有持仓时附持仓市值/浮盈亏
+      const q = (c.quote && typeof c.quote === 'object') ? c.quote : null;
+      let quoteStats = '<div class="cc-stat"><span class="label">最新股价</span><span class="val">' + (c.currentPrice||0).toFixed(2) + (c.currency ? ' <span class="muted" style="font-weight:400">' + esc(c.currency) + '</span>' : '') + '</span></div>';
+      if(q && (q.pct != null || q.chg != null)){
+        const cls = (q.pct || 0) >= 0 ? 'up' : 'down';
+        const flag = (q.pct || 0) > 0 ? '▲' : ((q.pct || 0) < 0 ? '▼' : '');
+        const chgStr = q.chg != null ? ((q.chg > 0 ? '+' : '') + q.chg.toFixed(2)) : '';
+        quoteStats += '<div class="cc-stat"' + (q.date ? ' title="行情快照 ' + esc(q.date) + '"' : '') + '><span class="label">涨跌</span><span class="val ' + cls + '">' + flag + ' ' + chgStr + ' ' + fmtPct(q.pct || 0) + '</span></div>';
+      }
+      // 市盈率(动)/成交额：行情快照带出，有值才显示
+      if(q && q.pe != null){
+        quoteStats += '<div class="cc-stat"' + (q.pe < 0 ? ' title="亏损"' : '') + '><span class="label">市盈率(动)</span><span class="val">' + q.pe.toFixed(2) + '</span></div>';
+      }
+      if(q && q.amount != null){
+        quoteStats += '<div class="cc-stat"><span class="label">成交额(亿)</span><span class="val">' + q.amount.toFixed(2) + '</span></div>';
+      }
       if(pos.position > 0){
-        stats += '<div class="cc-stat"><span class="label">持仓</span><span class="val">' + pos.position.toFixed(0) + ' 股</span></div>';
-        stats += '<div class="cc-stat"><span class="label">成本</span><span class="val">' + (pos.avgCost || 0).toFixed(2) + '</span></div>';
-        stats += '<div class="cc-stat"><span class="label">现价</span><span class="val">' + (c.currentPrice || 0).toFixed(2) + '</span></div>';
-        stats += '<div class="cc-stat"><span class="label">浮盈亏</span><span class="val ' + (pnl >= 0 ? 'up' : 'down') + '">' + fmtMoney(pnl) + ' (' + fmtPct(pnlPct) + ')</span></div>';
-      } else if(c.currentPrice){
-        stats += '<div class="cc-stat"><span class="label">现价</span><span class="val">' + (c.currentPrice || 0).toFixed(2) + ' ' + (c.currency||'') + '</span></div>';
+        quoteStats += '<div class="cc-stat"><span class="label">持仓市值</span><span class="val">' + fmtMoney(mv) + '</span></div>';
+        quoteStats += '<div class="cc-stat"><span class="label">浮盈亏</span><span class="val ' + (pnl >= 0 ? 'up' : 'down') + '">' + fmtMoney(pnl) + ' (' + fmtPct(pnlPct) + ')</span></div>';
       }
-      // 近期财务概览（最近一季度的关键指标）
+      // ② 最新财务数据（最近季度的关键指标）
       const latestFin = getLatestFin(c);
+      let finStats = '';
       if(latestFin){
-        SUMMARY_METRICS.forEach(sm => {
-          const v = latestFin[sm.key];
-          const tip = latestFin.quarter ? ' title="' + esc(latestFin.quarter) + '"' : '';
-          stats += '<div class="cc-stat"' + tip + '><span class="label">' + esc(sm.label) + '</span><span class="val">' + fmtFinValue(v, sm.unit) + '</span></div>';
-        });
+        finStats = SUMMARY_METRICS.map(sm =>
+          '<div class="cc-stat"' + (latestFin.quarter ? ' title="' + esc(latestFin.quarter) + '"' : '') + '><span class="label">' + esc(sm.label) + '</span><span class="val">' + fmtFinValue(latestFin[sm.key], sm.unit) + '</span></div>'
+        ).join('');
       }
+      // ③ 估值数据：最新估值 + 安全边际
+      let valStats = '';
       if(latestVal){
-        stats += '<div class="cc-stat"><span class="label">最新估值</span><span class="val">' + (latestVal.estimatedValue||0).toFixed(2) + ' <span class="method-badge ' + valMethodInfo(latestVal.method).cls + '">' + valMethodInfo(latestVal.method).label + '</span></span></div>';
-        if(mos != null) stats += '<div class="cc-stat"><span class="label">安全边际</span><span class="val ' + (mos >= 0 ? 'mos-pos' : 'mos-neg') + '">' + fmtPct(mos) + '</span></div>';
+        valStats += '<div class="cc-stat"><span class="label">最新估值</span><span class="val">' + (latestVal.estimatedValue||0).toFixed(2) + ' <span class="method-badge ' + valMethodInfo(latestVal.method).cls + '">' + valMethodInfo(latestVal.method).label + '</span></span></div>';
+        if(mos != null) valStats += '<div class="cc-stat"><span class="label">安全边际</span><span class="val ' + (mos >= 0 ? 'mos-pos' : 'mos-neg') + '">' + fmtPct(mos) + '</span></div>';
       }
+      const statGroup = (title, inner, extra) => inner
+        ? '<div class="cc-group"><div class="cc-group-title">' + title + (extra || '') + '</div><div class="cc-stats">' + inner + '</div></div>'
+        : '';
       return '<div class="company-card">' +
         '<div class="cc-head"><div>' +
           '<span class="cc-name" data-action="val.openCompany" data-id="' + c.id + '">' + esc(c.name) + '</span>' +
@@ -510,7 +529,7 @@
         '</div><div class="q-actions">' +
           '<button class="icon-btn" title="编辑" data-action="val.editCompany" data-id="' + c.id + '">✎</button>' +
           '<button class="icon-btn" title="删除" data-action="val.delCompany" data-id="' + c.id + '">✕</button></div></div>' +
-        (stats ? '<div class="cc-stats">' + stats + '</div>' : '') +
+        (statGroup('📈 实时行情', quoteStats) + statGroup('📊 最新财务', finStats, latestFin && latestFin.quarter ? ' <span class="muted" style="font-weight:400">' + esc(latestFin.quarter) + '</span>' : '') + statGroup('💰 估值数据', valStats)) +
         (c.note ? '<div class="muted" style="margin-top:8px;font-size:12px">' + esc(c.note.slice(0,60) + (c.note.length > 60 ? '…' : '')) + '</div>' : '') +
       '</div>';
     }).join('');
@@ -530,17 +549,41 @@
       '<button class="btn danger-ghost sm" data-action="val.delCompany" data-id="' + c.id + '">🗑 删除</button></div></div>';
 
     h += '<div class="val-summary-grid">';
+    // 行情快照（⬆ 导入股价 CSV 时带出：涨跌/市盈率(动)/市净率/换手率/成交/市值）
+    const q = (c.quote && typeof c.quote === 'object') ? c.quote : null;
+    let priceSub = '';
+    if(q && (q.pct != null || q.chg != null)){
+      const cls = (q.pct || 0) >= 0 ? 'up' : 'down';
+      const flag = (q.pct || 0) > 0 ? '▲' : ((q.pct || 0) < 0 ? '▼' : '');
+      const chgStr = q.chg != null ? ((q.chg > 0 ? '+' : '') + q.chg.toFixed(2)) : '';
+      priceSub = '<div class="vs-sub ' + cls + '">' + flag + ' ' + chgStr + ' ' + fmtPct(q.pct || 0) + (q.date ? ' · ' + esc(q.date) : '') + '</div>';
+    }
     h += '<div class="val-stat"><div class="vs-label">当前股价</div><div class="vs-value">' + (c.currentPrice||0).toFixed(2) + '</div>' +
+      priceSub +
       '<input type="number" step="0.01" class="price-input" data-change="val.price" data-id="' + c.id + '" value="' + (c.currentPrice||'') + '" placeholder="更新现价"></div>';
-    // 总市值 = 当前股价 × 总股本（亿股）；无总股本时显示 —
+    // 总市值 = 当前股价 × 总股本（亿股）；有行情快照时优先用东财行情总市值（更准）
     const totalShares = Number(c.totalShares) || 0;
-    const totalMvVal = totalShares > 0 ? (c.currentPrice || 0) * totalShares : null;
+    const qMktcap = q && Number(q.mktcap) > 0 ? Number(q.mktcap) : null;
+    const totalMvVal = qMktcap != null ? qMktcap : (totalShares > 0 ? (c.currentPrice || 0) * totalShares : null);
     // 总股本显示：去掉无意义的尾随 0（如 4.2100 → 4.21，4.0000 → 4）
     const sharesStr = totalShares > 0 ? String(parseFloat(totalShares.toFixed(4))) : '';
     h += '<div class="val-stat"><div class="vs-label">总市值</div><div class="vs-value">' + (totalMvVal == null ? '<span class="muted">—</span>' : fmtMoney(totalMvVal)) + '</div>' +
-      '<div class="vs-sub muted">总股本 ' + (totalShares > 0 ? sharesStr + ' 亿股' : '未填') + '</div></div>';
+      '<div class="vs-sub muted">总股本 ' + (totalShares > 0 ? sharesStr + ' 亿股' : '未填') + (qMktcap != null ? ' · 行情快照' : '') + '</div></div>';
     h += '<div class="val-stat"><div class="vs-label">总股本（亿股）</div><div class="vs-value">' + (totalShares > 0 ? sharesStr : '<span class="muted">—</span>') + '</div>' +
       '<input type="number" step="0.0001" class="price-input" data-change="val.totalShares" data-id="' + c.id + '" value="' + (totalShares > 0 ? sharesStr : '') + '" placeholder="如：4.21"></div>';
+    // 行情快照指标卡（有值才显示）：市盈率(动) / 市净率 / 换手率 / 成交额 / 成交量
+    if(q){
+      [['市盈率(动)', q.pe != null ? q.pe.toFixed(2) : null, q.pe != null && q.pe < 0 ? '（亏损）' : ''],
+       ['市净率', q.pb != null ? q.pb.toFixed(2) : null, ''],
+       ['换手率', q.turnover != null ? q.turnover.toFixed(2) + '%' : null, ''],
+       ['成交额(亿)', q.amount != null ? fmtMoney(q.amount) : null, ''],
+       ['成交量(手)', q.volume != null ? q.volume.toFixed(0) : null, ''],
+      ].forEach(cd => {
+        if(cd[1] == null) return;
+        h += '<div class="val-stat"><div class="vs-label">' + cd[0] + '</div><div class="vs-value">' + cd[1] + '</div>' +
+          (cd[2] ? '<div class="vs-sub muted">' + cd[2] + '</div>' : '') + '</div>';
+      });
+    }
     if(pos.position > 0){
       h += '<div class="val-stat"><div class="vs-label">持仓</div><div class="vs-value">' + pos.position.toFixed(0) + ' 股</div><div class="vs-sub">均成本 ' + pos.avgCost.toFixed(2) + '</div></div>';
       h += '<div class="val-stat"><div class="vs-label">市值</div><div class="vs-value">' + fmtMoney(mv) + '</div></div>';
@@ -910,35 +953,6 @@
     };
     return trySave();
   }
-  // 批量导出到选定文件夹（File System Access API 的 showDirectoryPicker）。
-  // 一次选定文件夹后，把多份 CSV 全部写入该文件夹，避免逐份弹窗。
-  // 不支持时回退为逐份 download（浏览器会询问允许多次下载）。
-  function exportCsvToFolder(files){   // files: [{ filename, content }]
-    if(!files || !files.length) return Promise.resolve(0);
-    const doEach = async dir => {
-      let n = 0;
-      for(const f of files){
-        try {
-          const handle = await dir.getFileHandle(f.filename, { create:true });
-          const w = await handle.createWritable();
-          await w.write(new Blob([f.content], { type:'text/csv;charset=utf-8;' }));
-          await w.close();
-          n++;
-        } catch(e){ console.warn('写入文件失败:', f.filename, e); }
-      }
-      return n;
-    };
-    if(window.showDirectoryPicker){
-      return window.showDirectoryPicker({ mode:'readwrite' }).then(doEach).catch(e => {
-        if(e && e.name === 'AbortError') return Promise.resolve(0);   // 用户取消
-        // 不支持/失败回退逐份下载
-        files.forEach(f => downloadCsv(f.filename, f.content));
-        return Promise.resolve(files.length);
-      });
-    }
-    files.forEach(f => downloadCsv(f.filename, f.content));
-    return Promise.resolve(files.length);
-  }
   // CSV 行解析（逐行 + 引号内逗号处理，跨行字段合并）
   function parseCsvSimple(text){
     const rawLines = text.replace(/\r\n/g,'\n').replace(/^\uFEFF/,'').split('\n');
@@ -973,6 +987,94 @@
     }
     return out;
   }
+
+  /* ----- 公司列表批量导入 / 导出（对一批新公司做分析）-----
+   * 导出列与「⬆ 导入公司列表」互相兼容，同时可作为脚本输入：
+   *   py scripts/fetch_financial.py --from-csv 公司列表.csv
+   *   py scripts/fetch_profit_forecast.py --from-csv 公司列表.csv
+   * 导入时兼容两种格式（都要求含「股票代码」表头列）：
+   *   ① 本模块导出的公司列表 CSV
+   *   ② 财报跟踪模块「⬇ 导出 CSV」的筛选结果宽表（指标列自动忽略）
+   * 按股票代码去重，已存在的公司跳过。 */
+  const COMPANY_CSV_COLS = ['股票代码','公司名称','市场','板块','行业','林奇类型','行业细分','货币','现价','总股本'];
+  function csvEscape(v){
+    v = String(v == null ? '' : v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function companiesToCsv(){
+    const lines = ['# GoalTracker 公司列表（导出于 ' + dateStr() + '，可用 fetch_financial.py --from-csv 批量抓取）', COMPANY_CSV_COLS.join(',')];
+    DB.valuation.companies.forEach(c => {
+      lines.push([c.ticker, c.name, c.market || 'A股', c.board || '', c.industry || '', c.companyType || '',
+        c.sector || '', c.currency || '', c.currentPrice || '', c.totalShares || ''].map(csvEscape).join(','));
+    });
+    return '\ufeff' + lines.join('\r\n');
+  }
+  function importCompaniesCsv(){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,text/csv';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const rows = parseCsvSimple(reader.result);
+          // 找表头行（含「股票代码」列，# 注释行自动跳过）
+          let header = null, headerIdx = -1;
+          for(let i = 0; i < rows.length; i++){
+            const cells = (rows[i] || []).map(x => String(x == null ? '' : x).trim());
+            if(cells[0] && cells[0].charAt(0) === '#') continue;
+            if(cells.includes('股票代码')){ header = cells; headerIdx = i; break; }
+          }
+          if(!header){ alert('CSV 中未找到「股票代码」表头列。\n请导入公司列表 CSV，或财报跟踪模块导出的筛选结果 CSV。'); return; }
+          const get = (r, n) => { const idx = header.indexOf(n); return idx >= 0 ? String(r[idx] == null ? '' : r[idx]).trim() : ''; };
+          const boardKeys = VAL_BOARDS.map(b => b.key).filter(Boolean);
+          const lynchKeys = VAL_LYNCH_TYPES.map(t => t.key);
+          const existTicker = new Set(DB.valuation.companies.map(c => String(c.ticker || '').trim().toUpperCase()));
+          const existName = new Set(DB.valuation.companies.map(c => String(c.name || '').trim()));
+          let added = 0, skipped = 0;
+          for(let i = headerIdx + 1; i < rows.length; i++){
+            const r = rows[i] || [];
+            const ticker = get(r, '股票代码').toUpperCase();
+            const name = get(r, '公司名称');
+            if(!ticker && !name) continue;
+            if((ticker && existTicker.has(ticker)) || (!ticker && name && existName.has(name))){ skipped++; continue; }
+            let market = get(r, '市场');
+            if(!VAL_MARKETS.includes(market)){
+              market = /\.HK$/i.test(ticker) ? '港股' : (/\.US$/i.test(ticker) ? '美股' : 'A股');
+            }
+            const board = get(r, '板块');
+            let ctype = get(r, '林奇类型') || get(r, '公司类型');
+            if(ctype && !lynchKeys.includes(ctype)) ctype = '';   // 非标准类型不带入，避免筛选混乱
+            DB.valuation.companies.push({
+              id: uid(),
+              name: name || ticker,
+              ticker,
+              market,
+              board: boardKeys.includes(board) ? board : '',
+              industry: get(r, '行业'),
+              companyType: ctype,
+              sector: get(r, '行业细分') || get(r, '细分'),
+              currency: get(r, '货币') || (market === 'A股' ? 'CNY' : ''),
+              currentPrice: parseFloat(get(r, '现价')) || 0,
+              totalShares: parseFloat(get(r, '总股本')) || '',
+              financials: [], valuations: [], investments: [], research: '',
+            });
+            if(ticker) existTicker.add(ticker);
+            if(name) existName.add(name);
+            added++;
+          }
+          if(added) save();
+          render();
+          alert('导入完成：新增 ' + added + ' 家' + (skipped ? '，跳过已存在 ' + skipped + ' 家' : '') +
+            (added ? '\n\n下一步可运行：\npy scripts/fetch_financial.py --from-csv <公司列表CSV>\npy scripts/fetch_profit_forecast.py --from-csv <公司列表CSV>\n抓取财务与预期数据后「⬆ 批量导入 CSV」' : ''));
+        } catch(e){ alert('导入失败：' + e.message); }
+      };
+      reader.readAsText(file, 'utf-8');
+    };
+    input.click();
+  }
   // 判断是否「股价 CSV」（# GoalTracker 股价数据 或 含 现价 列）
   function isPriceCsv(csvLines){
     for(const r of csvLines){
@@ -987,20 +1089,34 @@
   //   股票代码,公司,现价
   //   688256.SH,寒武纪,1050.49
   // 兼容列头顺序变动：按「列名」定位列索引（支持 股票代码/代码, 公司/名称, 现价/价格）
+  // 把「股价 CSV」解析为行情快照数组。格式（fetch_prices.py 生成，按日期存档）：
+  //   股票代码,公司,现价,涨跌额,涨跌幅%,市盈率(动),市净率,换手率%,成交量(手),成交额(亿),总市值(亿),流通市值(亿),总股本(亿股)
+  // 兼容列头顺序变动与旧格式（只有 现价 列）
   function csvToPrices(csvLines){
     let idx = null;
     const out = [];
+    const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[,\s%]/g, '')); return isNaN(n) ? null : n; };
+    const COLMAP = {
+      '现价':'price', '价格':'price', '最新价':'price',
+      '涨跌额':'chg', '涨跌':'chg', '涨跌幅%':'pct', '涨跌幅':'pct',
+      '市盈率(动)':'pe', '市盈率':'pe', '市净率':'pb',
+      '换手率%':'turnover', '换手率':'turnover',
+      '成交量(手)':'volume', '成交量':'volume',
+      '成交额(亿)':'amount', '成交额':'amount',
+      '总市值(亿)':'mktcap', '总市值':'mktcap',
+      '流通市值(亿)':'floatmv', '总股本(亿股)':'shares', '总股本':'shares',
+    };
     for(const r of csvLines){
       if(!r || !r.length) continue;
       const cells = r.map(x => String(x == null ? '' : x).trim());
       const first = cells[0];
       // 识别列头行：第一格是「股票代码」或「代码」
       if(idx === null && (first === '股票代码' || first === '代码')){
-        const i = { code:-1, name:-1, price:-1 };
+        const i = { code:-1, name:-1, price:-1, chg:-1, pct:-1, pe:-1, pb:-1, turnover:-1, volume:-1, amount:-1, mktcap:-1, floatmv:-1, shares:-1 };
         cells.forEach((c, j) => {
           if(c === '股票代码' || c === '代码') i.code = j;
           else if(c === '公司' || c === '名称' || c === '股票名称') i.name = j;
-          else if(c === '现价' || c === '价格' || c === '最新价') i.price = j;
+          else if(COLMAP[c]) i[COLMAP[c]] = j;
         });
         if(i.price >= 0){ idx = i; }
         continue;
@@ -1008,11 +1124,32 @@
       if(!idx) continue;                          // 尚未遇到列头
       const code = cells[idx.code >= 0 ? idx.code : 0] || '';
       if(!/^\d{6}(\.(SH|SZ|BJ))?$/.test(code)) continue;
-      const price = parseFloat((cells[idx.price] || '').replace(/[,\s]/g,''));
-      if(isNaN(price)) continue;
-      out.push({ ticker: code.toUpperCase(), name: cells[idx.name >= 0 ? idx.name : 1] || '', price });
+      const price = num(cells[idx.price]);
+      if(price == null) continue;
+      const get = k => idx[k] >= 0 ? num(cells[idx[k]]) : null;
+      out.push({
+        ticker: code.toUpperCase(),
+        name: cells[idx.name >= 0 ? idx.name : 1] || '',
+        price,
+        chg: get('chg'), pct: get('pct'), pe: get('pe'), pb: get('pb'),
+        turnover: get('turnover'), volume: get('volume'), amount: get('amount'),
+        mktcap: get('mktcap'), floatmv: get('floatmv'), shares: get('shares'),
+      });
     }
     return out;
+  }
+  // 把一条行情快照写入公司：更新现价/总股本，并带出涨跌/估值/成交等快照
+  // （「⬆ 导入股价」与「⬆ 批量导入 CSV」识别到股价 CSV 时共用此逻辑）
+  function applyPriceUpdate(target, p){
+    target.currentPrice = p.price;
+    target.updated = dateStr();
+    // 总股本（行情快照推算，亿股）：有值时自动补全
+    if(p.shares != null && p.shares > 0) target.totalShares = p.shares;
+    // 行情快照（详情页上方展示）：涨跌/市盈率(动)/市净率/换手率/成交额/市值
+    const q = {};
+    ['chg','pct','pe','pb','turnover','volume','amount','mktcap','floatmv']
+      .forEach(k => { if(p[k] != null) q[k] = p[k]; });
+    target.quote = Object.keys(q).length ? Object.assign({ date: dateStr() }, q) : target.quote;
   }
   // 把解析出的 CSV 行转为财务数据数组（季度 + 指标值），跳过注释/表头
   function csvRowsToFinancials(csvLines){
@@ -1078,8 +1215,7 @@
                   const target = DB.valuation.companies.find(x =>
                     x.ticker === p.ticker || (p.name && x.name === p.name));
                   if(!target) return;
-                  target.currentPrice = p.price;
-                  target.updated = dateStr();
+                  applyPriceUpdate(target, p);
                   updated++;
                 });
                 if(updated){ matched++; } else { skipped++; }
@@ -1126,6 +1262,55 @@
     input.click();
   }
 
+  // 批量导入「盈利预测 CSV」（盈利预测_{代码}_{公司名}.csv，可多选；
+  // 由 fetch_profit_forecast.py --auto 生成）。
+  // 公司匹配优先级：CSV 头部「股票代码」行 → 文件名中的 6 位代码 → 头部「公司」名称。
+  function importForecastFiles(){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,text/csv';
+    input.multiple = true;
+    input.onchange = () => {
+      const files = Array.from(input.files||[]);
+      if(!files.length) return;
+      let ok = 0, skipped = 0, bad = 0;
+      const code6 = t => { const m = String(t||'').match(/(\d{6})/); return m ? m[1] : ''; };
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const lines = parseCsvSimple(reader.result);
+            const fc = csvToForecast(lines);
+            if(!(fc.detail.length || fc.consensus.length || fc.eps.length)){
+              bad++;   // 不是盈利预测 CSV（无 ORG/CONS/EPSR 行）
+            } else {
+              let ticker = '', cname = '';
+              for(const r of lines){
+                const k = String(r[0]||'').trim();
+                if(k === '公司') cname = String(r[1]||'').trim();
+                else if(k === '股票代码') ticker = String(r[1]||'').trim().toUpperCase();
+                if(ticker && cname) break;
+              }
+              // fallback：从文件名提取 6 位代码（盈利预测_688256.SH_寒武纪.csv）
+              if(!ticker) ticker = code6(file.name);
+              let target = null;
+              if(ticker) target = DB.valuation.companies.find(x => code6(x.ticker) === code6(ticker));
+              if(!target && cname) target = DB.valuation.companies.find(x => x.name === cname);
+              if(!target){ skipped++; }
+              else { target.forecast = fc; target.updated = dateStr(); ok++; }
+            }
+          } catch(e){ bad++; }
+          if(ok + skipped + bad >= files.length){
+            save(); render();
+            alert('盈利预测批量导入完成：成功 ' + ok + ' 个，未匹配公司 ' + skipped + ' 个，失败/格式不符 ' + bad + ' 个');
+          }
+        };
+        reader.readAsText(file, 'utf-8');
+      });
+    };
+    input.click();
+  }
+
   // 专门导入「股价 CSV」（data/prices/当前股价.csv），批量更新各公司 currentPrice。
   function importPriceFiles(){
     const input = document.createElement('input');
@@ -1148,8 +1333,7 @@
                 const target = DB.valuation.companies.find(x =>
                   x.ticker === p.ticker || (p.name && x.name === p.name));
                 if(!target){ skipped++; return; }
-                target.currentPrice = p.price;
-                target.updated = dateStr();
+                applyPriceUpdate(target, p);
                 updated++;
               });
             }
@@ -1492,9 +1676,31 @@
     ensure: ensure,
     render: renderValuation,
     actions: {
-      'val.fBoard': el => { state.valBoard = el.dataset.v; render(); },
-      'val.fIndustry': el => { state.valIndustry = el.dataset.v; render(); },
-      'val.fLynch': el => { state.valLynchType = el.dataset.v; render(); },
+      'val.fBoard': el => {
+        // 多选：点击选中，再次点击取消
+        const v = el.dataset.v;
+        const set = new Set(state.valBoards || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.valBoards = [...set];
+        render();
+      },
+      'val.fBoardClear': () => { state.valBoards = []; render(); },
+      'val.fIndustry': el => {
+        const v = el.dataset.v;
+        const set = new Set(state.valIndustries || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.valIndustries = [...set];
+        render();
+      },
+      'val.fIndustryClear': () => { state.valIndustries = []; render(); },
+      'val.fLynch': el => {
+        const v = el.dataset.v;
+        const set = new Set(state.valLynchs || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.valLynchs = [...set];
+        render();
+      },
+      'val.fLynchClear': () => { state.valLynchs = []; render(); },
       'val.back': () => { state.valCompanyId = null; render(); },
       'val.openCompany': el => { state.valCompanyId = el.dataset.id; render(); window.scrollTo(0,0); },
       'val.addCompany': () => openModal('添加关注公司',
@@ -1596,21 +1802,18 @@
         };
         input.click();
       },
-      'val.exportAllCsv': () => {
-        const cs = DB.valuation.companies;
-        if(!cs.length){ alert('还没有公司数据'); return; }
-        // 一次选定文件夹，把有数据的公司全部写入该文件夹；不支持则逐份下载
-        const files = cs.filter(c => (c.financials||[]).length).map(c => ({
-          filename: (c.ticker||'company') + '_' + (c.name||'财务数据') + '.csv',
-          content: financialsToCsv(c),
-        }));
-        if(!files.length){ alert('所有公司都还没有财务数据'); return; }
-        exportCsvToFolder(files).then(n => {
-          if(n) alert('已导出 ' + n + ' 家公司的 CSV 到所选文件夹');
-        });
-      },
       'val.importAllCsv': () => {
         importCsvFiles(DB.valuation.companies);
+      },
+      'val.importForecastAll': () => {
+        importForecastFiles();
+      },
+      'val.exportCompanies': () => {
+        if(!DB.valuation.companies.length){ alert('还没有公司数据'); return; }
+        downloadCsv('公司列表_' + dateStr() + '.csv', companiesToCsv());
+      },
+      'val.importCompanies': () => {
+        importCompaniesCsv();
       },
       'val.importPrices': () => {
         importPriceFiles();

@@ -15,8 +15,11 @@
   py fetch_financial.py --ticker 688256.SH
   # 抓取多只（逗号分隔）
   py fetch_financial.py --tickers 601138.SH,000977.SZ,300308.SZ
-  # 自动扫描 data/financial/ 下已有的 {ticker}_{名}.csv，抓取这些公司
-  py fetch_financial.py --auto
+  # 自动读取 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成）批量抓取；
+  # 文件不存在时回退：JSON → 扫描已有 CSV
+  py fetch_financial.py --auto --quarters 18
+  # 从公司列表 CSV 批量抓取（估值模块「⬇ 导出公司列表」或财报跟踪「⬇ 导出 CSV」均可）
+  py fetch_financial.py --from-csv 公司列表.csv
   # 指定输出目录 / 最多抓取季度数（默认输出到 data/financial/）
   py fetch_financial.py --ticker 688256.SH --quarters 9
   py fetch_financial.py --ticker 688256.SH --outdir ../data/financial
@@ -92,6 +95,48 @@ def scan_existing(outdir):
         if m:
             result.append((m.group(1), m.group(3)))
     return result
+
+
+def _norm_ticker(s):
+    """'601138' / '601138.SH' → '601138.SH'；无法识别返回原值大写。"""
+    s = str(s or '').strip().upper()
+    m = re.match(r'^(\d{6})(?:\.(SH|SZ|BJ))?$', s)
+    if not m:
+        return s or ''
+    code, mkt = m.group(1), m.group(2)
+    if not mkt:
+        if code.startswith(('60', '68', '90')):
+            mkt = 'SH'
+        elif code.startswith(('00', '30', '20', '39')):
+            mkt = 'SZ'
+        else:
+            mkt = 'BJ'
+    return '%s.%s' % (code, mkt)
+
+
+def load_targets_from_csv(path):
+    """从公司列表 CSV 读取目标公司，返回 [(ticker, 公司名), ...]。
+    兼容两种来源（都要求含「股票代码」列，「公司名称」可选）：
+      ① 估值模块「⬇ 导出公司列表」生成的 CSV
+      ② 财报跟踪模块「⬇ 导出 CSV」生成的筛选结果宽表（含指标列，自动忽略）
+    # 开头的注释行自动跳过；按股票代码去重。"""
+    if not os.path.exists(path):
+        print('⚠️  文件不存在：%s' % path)
+        return []
+    with open(path, encoding='utf-8-sig') as f:
+        lines = [ln for ln in f if not ln.lstrip().startswith('#')]
+    targets, seen = [], set()
+    for r in csv.DictReader(lines):
+        t = _norm_ticker(r.get('股票代码'))
+        n = (r.get('公司名称') or '').strip()
+        if not t and not n:
+            continue
+        if t and t in seen:
+            continue
+        if t:
+            seen.add(t)
+        targets.append((t or n, n))
+    return targets
 
 
 def scan_from_json(json_path):
@@ -230,6 +275,8 @@ def main():
     ap.add_argument('--ticker', help='单只股票代码，如 688256.SH')
     ap.add_argument('--tickers', help='多只股票代码，逗号分隔')
     ap.add_argument('--auto', action='store_true', help='自动扫描 data/ 下已有公司')
+    ap.add_argument('--from-csv', dest='from_csv', default=None,
+                    help='从公司列表 CSV 读取目标公司（列：股票代码[,公司名称]，兼容估值模块导出/财报跟踪导出格式）')
     ap.add_argument('--quarters', type=int, default=9, help='抓取最近 N 期（默认 9）')
     ap.add_argument('--outdir', default=None, help='输出目录（默认 <scripts>/../data，即本地数据目录）')
     ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认 data/goal-tracker-data.json）')
@@ -246,13 +293,25 @@ def main():
     # 确定目标公司列表
     targets = []
     if args.auto:
-        # auto 模式：优先从 JSON 读取全部公司（覆盖更全）；JSON 不存在则回退扫描已有 CSV
-        json_path = args.json or os.path.join(base_data, 'goal-tracker-data.json')
-        targets = scan_from_json(json_path)
+        # auto 模式：默认读 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
+        # 文件不存在时回退：JSON → 扫描已有 CSV
+        summary_csv = os.path.join(base_data, '公司列表_当前汇总.csv')
+        if os.path.exists(summary_csv):
+            targets = load_targets_from_csv(summary_csv)
+            print('📋 公司列表：data/公司列表_当前汇总.csv（%d 家）' % len(targets))
+        else:
+            print('⚠️  未找到 data/公司列表_当前汇总.csv，回退到 JSON / 已有 CSV 扫描')
+            json_path = args.json or os.path.join(base_data, 'goal-tracker-data.json')
+            targets = scan_from_json(json_path)
+            if not targets:
+                targets = scan_existing(outdir)
         if not targets:
-            targets = scan_existing(outdir)
+            print('未找到公司列表，请先在估值模块「⬇ 导出公司列表」并另存为 data/公司列表_当前汇总.csv，或用 --ticker/--tickers/--json 指定。')
+            return 1
+    elif args.from_csv:
+        targets = load_targets_from_csv(args.from_csv)
         if not targets:
-            print('未从 JSON/CSV 找到公司列表，请用 --ticker 或 --tickers 指定，或用 --json 指定数据文件。')
+            print('公司列表 CSV 中未找到任何公司（需要「股票代码」列）。')
             return 1
     else:
         tickers = args.ticker or args.tickers

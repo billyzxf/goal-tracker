@@ -227,6 +227,7 @@
       '按披露日期跟踪财报后的最新财务数据，筛选超预期公司 · 共 ' + rows.length + ' 家',
       '<button class="btn ghost sm" data-action="earn.import" title="导入财报跟踪 CSV（data/earnings/财报跟踪_YYYYMMDD.csv），由 scripts/fetch_earnings.py 生成">⬆ 导入财报 CSV</button>' +
       '<button class="btn ghost sm" data-action="earn.export" title="导出当前满足全部筛选条件的公司及指标为 CSV，可重新导入">⬇ 导出 CSV</button>' +
+      '<button class="btn ghost sm" data-action="earn.exportCompanies" title="将满足筛选条件的公司导出为公司列表 CSV（市场/板块/行业/林奇类型），可直接到「公司估值」点「⬆ 导入公司列表」批量添加">⬇ 导出公司列表</button>' +
       '<button class="btn ghost sm" data-action="earn.clear" title="清空已导入的财报数据">🗑 清空</button>');
 
     if(!rows.length){
@@ -498,6 +499,29 @@
     return h;
   }
 
+  // CSV 保存：优先弹出「另存为」对话框选目录（Chrome/Edge，用户取消则不导出），
+  // 不支持的浏览器降级为直接下载到默认下载目录
+  function saveCsvFile(fname, content){
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    const fallback = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    if(window.showSaveFilePicker){
+      window.showSaveFilePicker({
+        suggestedName: fname,
+        types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }],
+      }).then(handle => handle.createWritable())
+        .then(w => w.write(blob).then(() => w.close()))
+        .catch(e => { if(e && e.name !== 'AbortError') fallback(); });
+    } else {
+      fallback();
+    }
+  }
+
   // ---- 导出 CSV（当前满足全部筛选条件的公司 + 指标）----
   // 导出文件含 # 注释头与「股票代码」表头，可直接重新「⬆ 导入财报 CSV」
   // 导出列 = 基础信息列 + 全部指标列（含超预期）+ 自定义指标列
@@ -517,29 +541,25 @@
         return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
       }).join(','));
     });
-    const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const fname = '财报跟踪_筛选_' + dateStr() + '.csv';
-    // 降级：直接下载到浏览器默认下载目录
-    const fallback = () => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = fname;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast('✅ 已导出 ' + lastList.length + ' 家公司及指标数据');
-    };
-    // 优先弹出「另存为」对话框，可自选目录/文件名（Chrome/Edge；用户取消则不导出）
-    if(window.showSaveFilePicker){
-      window.showSaveFilePicker({
-        suggestedName: fname,
-        types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }],
-      }).then(handle => handle.createWritable())
-        .then(w => w.write(blob).then(() => w.close()))
-        .then(() => toast('✅ 已导出 ' + lastList.length + ' 家公司至所选位置'))
-        .catch(e => { if(e && e.name !== 'AbortError') fallback(); });
-    } else {
-      fallback();
-    }
+    saveCsvFile('财报跟踪_筛选_' + dateStr() + '.csv', '\ufeff' + lines.join('\r\n'));
+    toast('✅ 已导出 ' + lastList.length + ' 家公司及指标数据');
+  }
+
+  // ---- 导出为公司估值模块可直接导入的公司列表 CSV（满足当前全部筛选条件的公司）----
+  // 列格式与估值模块「⬆ 导入公司列表」兼容；同时可作为 fetch_financial.py --from-csv 的输入
+  const VAL_LIST_COLS = ['股票代码', '公司名称', '市场', '板块', '行业', '林奇类型'];
+  function exportCompaniesForVal(){
+    if(!lastList.length){ toast('⚠️ 当前没有满足筛选条件的公司'); return; }
+    const lines = ['# GoalTracker 公司列表（财报跟踪筛选 ' + lastList.length + ' 家，导出于 ' + dateStr() + '）',
+      VAL_LIST_COLS.join(',')];
+    lastList.forEach(r => {
+      lines.push(VAL_LIST_COLS.map(c => {
+        const v = c === '市场' ? 'A股' : String(r[c] || '');
+        return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      }).join(','));
+    });
+    saveCsvFile('公司列表_筛选_' + dateStr() + '.csv', '\ufeff' + lines.join('\r\n'));
+    toast('✅ 已导出 ' + lastList.length + ' 家，到「公司估值」点「⬆ 导入公司列表」即可批量添加');
   }
 
   // ---- 导入 CSV ----
@@ -588,6 +608,7 @@
     actions: {
       'earn.import': () => importCsv(),
       'earn.export': () => exportCsv(),
+      'earn.exportCompanies': () => exportCompaniesForVal(),
       'earn.clear': () => {
         if(confirm('确认清空所有已导入的财报跟踪数据？')){
           DB.earnings.rows = []; DB.earnings.importedAt = null;
