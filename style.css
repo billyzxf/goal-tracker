@@ -260,6 +260,17 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .val-table th{text-align:left;padding:8px 10px;background:var(--bg);border-bottom:2px solid var(--line);font-weight:600;color:var(--ink2);font-size:12px;white-space:nowrap}
 .val-table td{padding:7px 10px;border-bottom:1px solid var(--line)}
 .val-table tr:hover td{background:var(--bg2)}
+/* 分季度财务表：累计数据按 Q1→Q4 行底色渐深（同色行 = 同季度，便于同比对比） */
+.val-table tr.fin-q1 td{background:rgba(99,102,241,.035)}
+.val-table tr.fin-q2 td{background:rgba(99,102,241,.075)}
+.val-table tr.fin-q3 td{background:rgba(99,102,241,.115)}
+.val-table tr.fin-q4 td{background:rgba(99,102,241,.16)}
+html.dark .val-table tr.fin-q1 td{background:rgba(129,140,248,.06)}
+html.dark .val-table tr.fin-q2 td{background:rgba(129,140,248,.10)}
+html.dark .val-table tr.fin-q3 td{background:rgba(129,140,248,.15)}
+html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
+/* 悬停高亮优先于季度底色（tbody 提升优先级） */
+.val-table tbody tr:hover td{background:var(--bg2)}
 .val-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .val-table .actions-cell{text-align:right;white-space:nowrap}
 /* 宽屏自适应表格（财报跟踪等多列表格）：

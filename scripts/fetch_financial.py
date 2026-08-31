@@ -6,6 +6,7 @@
   ① RPT_F10_FINANCE_MAINFINADATA  核心财务指标（ROE/毛利率/净利率/负债率/总资产/营收/现金流/扣非等，
                                     含营收同比% TOTALOPERATEREVETZ、扣非净利润同比% KCFJCXSYJLRTZ）
   ② RPT_F10_FINANCE_GINCOME       利润表（营收 / 营业成本 → 毛利润 / 归母净利润）
+  ③ RPT_F10_FINANCE_GBALANCE      资产负债表（应收账款 / 存货 / 合同负债 / 货币资金）
 
 输出文件（data/ 目录）：
   {ticker}_{公司名}.csv   —— 与估值模块「⬇ 导出 / ⬆ 导入」CSV 完全兼容
@@ -51,7 +52,9 @@ from eastmoney import EastmoneyClient, to_yi, _norm_report_date
 OUT_COLUMNS = [
     'totalAssets', 'equity', 'revenue', 'revenueYoy', 'grossProfit', 'netProfit',
     'deductedNetProfit', 'deductedNetProfitYoy', 'opCashFlow', 'capex', 'roe',
-    'grossMargin', 'netMargin', 'assetLiabRatio', 'totalAssetTurnover',
+    'grossMargin', 'netMargin', 'assetLiabRatio',
+    'accountsReceivable', 'inventory', 'contractLiab', 'cash',
+    'totalAssetTurnover',
 ]
 
 # 东财字段 → (目标列, 东财字段名, 是否"元→亿"换算)。
@@ -72,6 +75,14 @@ MAIN_MAP = [
     ('netMargin',            'XSJLL',              False),  # 净利率(%)
     ('assetLiabRatio',       'ZCFZL',              False),  # 资产负债率(%)
     ('totalAssetTurnover',   'ZZCJLL',             False),  # 总资产周转率(次)
+]
+
+# 资产负债表字段（RPT_F10_FINANCE_GBALANCE）→ 目标列（单位均为"元"，用 to_yi 换算为"亿"）
+BALANCE_MAP = [
+    ('accountsReceivable', 'ACCOUNTS_RECE'),    # 应收账款(元)
+    ('inventory',          'INVENTORY'),        # 存货(元)
+    ('contractLiab',       'CONTRACT_LIAB'),    # 合同负债(元)
+    ('cash',               'MONETARYFUNDS'),    # 货币资金(元)
 ]
 
 
@@ -170,6 +181,7 @@ def fetch_one(em, ticker, name, quarters=8):
     # 按需拉取：只请求需要的报告期数，减少网络开销（东财单次最多约 39 期）
     main = em.finance_main(secu, periods=quarters)
     income = em.finance_income(secu, periods=quarters)
+    balance = em.finance_balance(secu, periods=quarters)
     cashflow = em.finance_cashflow(secu, periods=quarters)
 
     # 优先用东财返回的公司简称（--ticker 方式未传公司名时也能用真名）
@@ -228,6 +240,18 @@ def fetch_one(em, ticker, name, quarters=8):
         capex = to_yi(r.get('CONSTRUCT_LONG_ASSET'))
         if capex is not None:
             rows[q]['capex'] = round(capex, 4)
+
+    # 资产负债表：应收账款/存货/合同负债/货币资金（元→亿）
+    bal_by_q = {}
+    for r in balance:
+        bal_by_q[_norm_report_date(r.get('REPORT_DATE'))] = r
+    for q, r in bal_by_q.items():
+        if q not in rows:
+            continue
+        for col, emfield in BALANCE_MAP:
+            val = to_yi(r.get(emfield))
+            if val is not None:
+                rows[q][col] = round(val, 4)
 
     # 排序并截取最近 N 期
     sorted_q = sorted(rows.keys(), key=lambda x: _qkey(x), reverse=True)[:quarters]

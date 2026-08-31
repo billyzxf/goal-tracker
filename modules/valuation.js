@@ -146,6 +146,10 @@
     { key:'grossMargin',      label:'毛利率',       unit:'%',  priority:4, category:'核心指标', source:'input', desc:'毛利率' },
     { key:'netMargin',        label:'净利率',       unit:'%',  priority:4, category:'核心指标', source:'input', desc:'净利率 = 净利润/营业收入' },
     { key:'assetLiabRatio',   label:'资产负债率',   unit:'%',  priority:4, category:'核心指标', source:'input', desc:'资产负债率（资产负债表）' },
+    { key:'accountsReceivable',label:'应收账款',    unit:'亿', priority:3, category:'资产负债表', source:'input', desc:'应收账款（资产负债表，观察收入质量与下游占款）' },
+    { key:'inventory',        label:'存货',         unit:'亿', priority:3, category:'资产负债表', source:'input', desc:'存货（资产负债表，观察备货节奏与需求景气）' },
+    { key:'contractLiab',     label:'合同负债',     unit:'亿', priority:3, category:'资产负债表', source:'input', desc:'合同负债（资产负债表，订单能见度的前瞻信号）' },
+    { key:'cash',             label:'货币资金',     unit:'亿', priority:3, category:'资产负债表', source:'input', desc:'货币资金（资产负债表，现金储备）' },
     { key:'totalAssetTurnover',label:'总资产周转率', unit:'次', priority:4, category:'核心指标', source:'input', desc:'总资产周转率 = 营业收入/总资产' },
   ];
 
@@ -536,6 +540,16 @@
     return h;
   }
 
+  /* 从季度字符串解析 Q1~Q4（支持 "2025Q3" / "2025-09" 两种格式），解析失败返回 0 */
+  function finQuarterNum(q){
+    const s = String(q || '');
+    let m = s.match(/Q([1-4])$/i);
+    if(m) return +m[1];
+    m = s.match(/-(\d{2})$/);
+    if(m){ const mo = +m[1]; return (mo >= 1 && mo <= 12) ? Math.ceil(mo/3) : 0; }
+    return 0;
+  }
+
   /* ----- 公司详情视图 ----- */
   function renderCompanyDetail(c){
     const pos = calcPosition(c.investments || []);
@@ -597,7 +611,7 @@
     const fins = (c.financials||[]).slice().sort((a,b) => state.valFinSort === 'asc'
       ? (a.quarter||'').localeCompare(b.quarter||'')
       : (b.quarter||'').localeCompare(a.quarter||''));
-    h += '<div class="val-section"><div class="vs-head"><h3>📋 分季度财务数据 <span class="muted" style="font-weight:400;font-size:12px">共 ' + fins.length + ' 个季度</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+    h += '<div class="val-section"><div class="vs-head"><h3>📋 分季度财务数据 <span class="muted" style="font-weight:400;font-size:12px">共 ' + fins.length + ' 个季度 · 行底色按 Q1→Q4 渐深，同色行即同比可比季度</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
       '<div class="fin-sort">' +
         '<button class="sort-btn ' + (state.valFinSort === 'desc' ? 'active' : '') + '" data-action="val.toggleFinSort" data-v="desc" title="最新季度在前">新→旧</button>' +
         '<button class="sort-btn ' + (state.valFinSort === 'asc' ? 'active' : '') + '" data-action="val.toggleFinSort" data-v="asc" title="最早季度在前">旧→新</button>' +
@@ -620,7 +634,8 @@
       });
       h += '<th>备注</th><th></th></tr></thead><tbody>';
       fins.forEach(f => {
-        h += '<tr><td><b>' + esc(f.quarter) + '</b></td>';
+        const qn = finQuarterNum(f.quarter);
+        h += '<tr' + (qn ? ' class="fin-q' + qn + '"' : '') + '><td><b>' + esc(f.quarter) + '</b></td>';
         displayMetrics.forEach(mi => { h += '<td class="num">' + fmtMetric(getMetricValue(f, mi.key, fins), mi) + '</td>'; });
         h += '<td class="muted" style="max-width:120px">' + esc(f.note || '') + '</td>';
         h += '<td class="actions-cell"><button class="icon-btn" data-action="val.editFin" data-id="' + c.id + '" data-fid="' + f.id + '">✎</button><button class="icon-btn" data-action="val.delFin" data-id="' + c.id + '" data-fid="' + f.id + '" data-fquarter="' + esc(f.quarter) + '">✕</button></td>';
