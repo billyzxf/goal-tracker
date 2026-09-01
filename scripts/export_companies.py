@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""导出 goal-tracker-data.json 中全部公司列表为 CSV（名称/代码/板块/行业）。"""
+"""导出 goal-tracker-data.json 中全部公司列表为 CSV（data/公司列表.csv，名称/代码/市场/板块/行业等）。"""
 import sys, csv, io, os, json
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
     pass
 
-json_path = '../goal-tracker-data.json'
+json_path = '../data/goal-tracker-data.json'
 out_path = '../data/公司列表.csv'
 
 with open(json_path, encoding='utf-8') as f:

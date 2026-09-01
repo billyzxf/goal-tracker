@@ -17,11 +17,13 @@
   push2.eastmoney.com/api/qt/ulist.np/get       批量行情（实时，本环境代理可能不可达，自动回退）
 
 用法：
-  # 从默认 data/goal-tracker-data.json 读取公司列表，输出到 data/prices/当前股价_YYYYMMDD.csv
+  # 默认读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成），
+  # 输出到 data/prices/当前股价_YYYYMMDD.csv；CSV 不存在时回退 data/goal-tracker-data.json
   py fetch_prices.py
 
-  # 指定公司列表来源 JSON
-  py fetch_prices.py --json ../goal-tracker-data.json
+  # 指定公司列表来源 CSV / JSON
+  py fetch_prices.py --from-csv ../data/公司列表.csv
+  py fetch_prices.py --json ../data/goal-tracker-data.json
 
   # 指定输出目录 / 文件名
   py fetch_prices.py --outdir ../data/prices --out 当前股价.csv
@@ -35,6 +37,7 @@
   - 导入：公司估值 → 「⬆ 导入股价」→ 选择本 CSV。
 """
 import argparse
+import csv
 import datetime
 import io
 import json
@@ -135,6 +138,22 @@ def load_companies(json_path):
     return (d.get('valuation', {}).get('companies') or [])
 
 
+def load_companies_from_csv(path):
+    """从公司列表 CSV 读取 [{ticker, name}]，需含「股票代码」列（「公司名称」可选）。
+    兼容估值模块「⬇ 导出公司列表」格式（股票代码,公司名称,市场,板块,行业,林奇类型,行业细分,货币,现价,总股本）；
+    # 注释行跳过，按股票代码去重。"""
+    with open(path, encoding='utf-8-sig') as f:
+        lines = [ln for ln in f if not ln.lstrip().startswith('#')]
+    out, seen = [], set()
+    for r in csv.DictReader(lines):
+        t = str(r.get('股票代码') or '').strip().upper()
+        if not re.match(r'^\d{6}\.(SH|SZ|BJ)$', t) or t in seen:
+            continue
+        seen.add(t)
+        out.append({'ticker': t, 'name': (r.get('公司名称') or '').strip()})
+    return out
+
+
 def esc_csv(v):
     s = str(v)
     return '"%s"' % s.replace('"', '""') if re.search(r'[",\n]', s) else s
@@ -142,25 +161,39 @@ def esc_csv(v):
 
 def main():
     ap = argparse.ArgumentParser(description='批量获取当前股价 → 股价 CSV（用于浏览器批量导入更新股价）')
-    ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认 data/goal-tracker-data.json）')
+    ap.add_argument('--from-csv', dest='from_csv', default=None,
+                    help='公司列表来源 CSV（列：股票代码[,公司名称]，默认 data/公司列表.csv）')
+    ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认回退 data/goal-tracker-data.json）')
     ap.add_argument('--outdir', default=None, help='输出目录（默认 data/prices/）')
     ap.add_argument('--out', default=None, help='输出文件名（默认 当前股价.csv）')
     ap.add_argument('--dry-run', action='store_true', help='只打印将写入的价格，不写文件')
     args = ap.parse_args()
 
     base_data = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data'))
-    # 公司列表来源
-    if args.json:
-        json_path = os.path.normpath(args.json)
+    # 公司列表来源：默认 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）；
+    # 不存在时回退 data/goal-tracker-data.json；--from-csv / --json 可显式指定
+    cs = []
+    if args.from_csv:
+        csv_path = os.path.normpath(args.from_csv)
+        if not os.path.exists(csv_path):
+            print('找不到公司列表文件：%s' % csv_path)
+            return 1
+        cs = load_companies_from_csv(csv_path)
     else:
-        json_path = os.path.join(base_data, 'goal-tracker-data.json')
-    if not os.path.exists(json_path):
-        print('找不到公司列表文件：%s' % json_path)
-        print('请用 --json 指定，例如：py fetch_prices.py --json ../goal-tracker-data.json')
-        return 1
-    cs = load_companies(json_path)
+        default_csv = os.path.join(base_data, '公司列表.csv')
+        if os.path.exists(default_csv):
+            cs = load_companies_from_csv(default_csv)
+            if cs:
+                print('📋 公司列表：data/公司列表.csv（%d 家）' % len(cs))
+        if not cs:
+            json_path = os.path.normpath(args.json) if args.json else os.path.join(base_data, 'goal-tracker-data.json')
+            if not os.path.exists(json_path):
+                print('找不到公司列表文件：data/公司列表.csv 与 %s 均不存在。' % json_path)
+                print('请先在估值模块「⬇ 导出公司列表」生成 data/公司列表.csv，或用 --from-csv/--json 指定。')
+                return 1
+            cs = load_companies(json_path)
     if not cs:
-        print('JSON 中没有 valuation.companies 数据。')
+        print('公司列表为空（CSV 需含「股票代码」列 / JSON 需含 valuation.companies）。')
         return 1
 
     # 构造 secids（分批拉取，每次最多 60）

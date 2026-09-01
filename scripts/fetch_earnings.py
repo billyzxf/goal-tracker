@@ -6,7 +6,7 @@
 供前端「财报跟踪」模块导入后排序 / 筛选（按披露日期、营收同比、扣非净利同比等）。
 
 支持三种获取来源：
-  ① 关注列表（默认）        —— 从公司列表 JSON / CSV 读取关注公司，取每只最新一期财报
+  ① 关注列表（默认）        —— 从 data/公司列表.csv（或 --json）读取关注公司，取每只最新一期财报
   ② 指定关注公司 --codes    —— 只获取指定股票代码的公司
   ③ 按披露日期 --date       —— 不限股票列表，获取指定披露日期/范围内发布财报的【全部】公司
 
@@ -151,9 +151,11 @@ def is_main_board(code):
     return c.startswith('60') or c.startswith('00')
 
 
-def load_companies_meta(json_path):
-    """从 JSON 读公司列表；并尝试从 data/公司列表.csv 读取行业/板块/林奇类型。
-    返回 {ticker: {name, industry, board, companyType}}。"""
+def load_companies_meta(json_path=None, csv_path=None):
+    """读取公司列表元数据，返回 {ticker: {name, industry, board, companyType}}。
+    来源优先级：CSV（data/公司列表.csv，按列名解析，兼容估值模块导出的
+    10 列格式「股票代码,公司名称,市场,板块,行业,林奇类型,行业细分,货币,现价,总股本」
+    与旧 7 列格式）→ JSON（valuation.companies）；后加载的覆盖同 ticker 字段。"""
     meta = {}
     if json_path and os.path.exists(json_path):
         try:
@@ -171,34 +173,21 @@ def load_companies_meta(json_path):
         except Exception as e:   # noqa: BLE001
             print('  读取 JSON 公司列表失败: %s' % e)
 
-    # 补充：公司列表 CSV（若存在且 JSON 里缺标签）
-    csv_path = os.path.normpath(os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), '..', 'data', '公司列表.csv'))
-    if os.path.exists(csv_path):
+    # 公司列表 CSV（默认 data/公司列表.csv）：按列名解析，兼容不同列序
+    if csv_path and os.path.exists(csv_path):
         try:
             with open(csv_path, encoding='utf-8-sig') as f:
-                rd = csv.reader(f)
-                header = None
-                for row in rd:
-                    if not row:
-                        continue
-                    if header is None:
-                        header = row
-                        continue
-                    if len(row) < 2:
-                        continue
-                    code = (row[0] or '').strip().upper()
-                    if re.match(r'^\d{6}\.(SH|SZ|BJ)$', code):
-                        cur = meta.setdefault(code, {'name': row[1].strip(), 'industry': '', 'board': '', 'companyType': ''})
-                        if len(row) > 1 and row[1].strip():
-                            cur['name'] = row[1].strip()
-                        # 公司列表 CSV 列：股票代码,公司名称,板块,行业,细分领域,市场,林奇类型
-                        if len(row) > 2 and row[2].strip():
-                            cur['board'] = row[2].strip()
-                        if len(row) > 3 and row[3].strip():
-                            cur['industry'] = row[3].strip()
-                        if len(row) > 6 and row[6].strip():
-                            cur['companyType'] = row[6].strip()
+                lines = [ln for ln in f if not ln.lstrip().startswith('#')]
+            for r in csv.DictReader(lines):
+                code = str(r.get('股票代码') or '').strip().upper()
+                if not re.match(r'^\d{6}\.(SH|SZ|BJ)$', code):
+                    continue
+                cur = meta.setdefault(code, {'name': '', 'industry': '', 'board': '', 'companyType': ''})
+                for col, key in (('公司名称', 'name'), ('板块', 'board'),
+                                 ('行业', 'industry'), ('林奇类型', 'companyType')):
+                    v = str(r.get(col) or '').strip()
+                    if v:
+                        cur[key] = v
         except Exception as e:   # noqa: BLE001
             print('  读取公司列表 CSV 失败: %s' % e)
     return meta
@@ -500,7 +489,7 @@ def main():
         description='按财报发布日期批量获取财报 → 财报跟踪 CSV',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__)
-    ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认项目根目录 goal-tracker-data.json）')
+    ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认读 data/公司列表.csv，不存在时回退 data/goal-tracker-data.json）')
     ap.add_argument('--outdir', default=None, help='输出目录（默认 data/earnings/）')
     ap.add_argument('--codes', default=None,
                     help='指定关注公司股票代码（逗号分隔，如 601138,300308.SZ），可带或不带后缀')
@@ -582,6 +571,12 @@ def main():
         else:
             fname_date = _compact(dates[0])
     else:
+        # 公司列表来源：默认 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）；
+        # 文件不存在（或显式 --json）时回退 goal-tracker-data.json
+        list_csv = os.path.join(base_data, '公司列表.csv')
+        json_src = args.json
+        if not json_src and not os.path.exists(list_csv):
+            json_src = os.path.join(root, 'goal-tracker-data.json')
         # 模式②：指定关注公司
         if args.codes:
             mode = 'codes'
@@ -590,24 +585,20 @@ def main():
                 print('--codes 格式无效')
                 return 1
             meta = {c: {'name': c, 'industry': '', 'board': '', 'companyType': ''} for c in codes}
-            if args.json or os.path.exists(os.path.join(root, 'goal-tracker-data.json')):
-                jp = args.json or os.path.join(root, 'goal-tracker-data.json')
-                jm = load_companies_meta(jp)
-                for c in codes:
-                    if c in jm:
-                        meta[c] = jm[c]
+            jm = load_companies_meta(json_path=json_src,
+                                     csv_path=list_csv if os.path.exists(list_csv) else None)
+            for c in codes:
+                if c in jm:
+                    meta[c] = jm[c]
             fname_date = datetime.date.today().strftime('%Y%m%d') + '_自选'
         else:
             # 模式①：关注列表（默认）
             mode = 'watchlist'
-            jp = args.json or os.path.join(root, 'goal-tracker-data.json')
-            if not os.path.exists(jp):
-                print('找不到公司列表文件：%s' % jp)
-                print('请用 --json 指定，或改用 --codes / --date')
-                return 1
-            meta = load_companies_meta(jp)
+            meta = load_companies_meta(json_path=json_src,
+                                       csv_path=list_csv if os.path.exists(list_csv) else None)
             if not meta:
-                print('JSON 中没有 valuation.companies 数据。')
+                print('未找到公司列表：data/公司列表.csv 与 goal-tracker-data.json 均为空或不存在。')
+                print('请先在估值模块「⬇ 导出公司列表」生成 data/公司列表.csv，或用 --json / --codes / --date 指定。')
                 return 1
 
     if mode in ('watchlist', 'codes'):

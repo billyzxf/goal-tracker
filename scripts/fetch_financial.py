@@ -16,7 +16,7 @@
   py fetch_financial.py --ticker 688256.SH
   # 抓取多只（逗号分隔）
   py fetch_financial.py --tickers 601138.SH,000977.SZ,300308.SZ
-  # 自动读取 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成）批量抓取；
+  # 自动读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）批量抓取；
   # 文件不存在时回退：JSON → 扫描已有 CSV
   py fetch_financial.py --auto --quarters 18
   # 从公司列表 CSV 批量抓取（估值模块「⬇ 导出公司列表」或财报跟踪「⬇ 导出 CSV」均可）
@@ -317,20 +317,20 @@ def main():
     # 确定目标公司列表
     targets = []
     if args.auto:
-        # auto 模式：默认读 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
+        # auto 模式：默认读 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
         # 文件不存在时回退：JSON → 扫描已有 CSV
-        summary_csv = os.path.join(base_data, '公司列表_当前汇总.csv')
+        summary_csv = os.path.join(base_data, '公司列表.csv')
         if os.path.exists(summary_csv):
             targets = load_targets_from_csv(summary_csv)
-            print('📋 公司列表：data/公司列表_当前汇总.csv（%d 家）' % len(targets))
+            print('📋 公司列表：data/公司列表.csv（%d 家）' % len(targets))
         else:
-            print('⚠️  未找到 data/公司列表_当前汇总.csv，回退到 JSON / 已有 CSV 扫描')
+            print('⚠️  未找到 data/公司列表.csv，回退到 JSON / 已有 CSV 扫描')
             json_path = args.json or os.path.join(base_data, 'goal-tracker-data.json')
             targets = scan_from_json(json_path)
             if not targets:
                 targets = scan_existing(outdir)
         if not targets:
-            print('未找到公司列表，请先在估值模块「⬇ 导出公司列表」并另存为 data/公司列表_当前汇总.csv，或用 --ticker/--tickers/--json 指定。')
+            print('未找到公司列表，请先在估值模块「⬇ 导出公司列表」生成 data/公司列表.csv，或用 --ticker/--tickers/--json 指定。')
             return 1
     elif args.from_csv:
         targets = load_targets_from_csv(args.from_csv)
