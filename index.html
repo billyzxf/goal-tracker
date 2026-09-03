@@ -55,6 +55,8 @@
 <input type="file" id="import-file" accept="application/json" hidden>
 <!-- 内核 -->
 <script src="core.js"></script>
+<!-- 汉字转拼音库（公司搜索的拼音模糊匹配用；UMD → window.pinyinPro，加载失败时自动退化为原文匹配） -->
+<script src="lib/pinyin-pro.js"></script>
 <!-- 模块（按需新增：加一行 script + 一个 modules/*.js 即可，无需改内核） -->
 <script src="modules/dashboard.js"></script>
 <script src="modules/habits.js"></script>

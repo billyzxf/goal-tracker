@@ -10,9 +10,25 @@
   ② 一致预期（按年份：EPS / PE / ROE / 营收 / 归母净利 / 同比）
 
 用法：
+  # 自动模式（推荐）：读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）；
+  # 文件不存在时回退 goal-tracker-data.json；加 --update-json 同时把结果写入 JSON
+  py fetch_profit_forecast.py --auto
+  py fetch_profit_forecast.py --auto --update-json
+
+  # 从公司列表 CSV 批量抓取。兼容三种来源格式（列：股票代码[,公司名称]）：
+  #   估值模块「⬇ 导出公司列表」/ 财报跟踪「⬇ 导出 CSV」/ 公司组「📤 导出该组」
+  # 适合只分析某个公司组的场景（如公司组_AI算力_2026-09-03.csv）
+  py fetch_profit_forecast.py --from-csv 公司组_AI算力_2026-09-03.csv
+
+  # 抓取单只 / 多只（逗号分隔）
   py fetch_profit_forecast.py --ticker 002463.SZ
   py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH
-  py fetch_profit_forecast.py --outdir ../data
+
+  # 从 JSON 读全部公司 + 把结果写回 JSON
+  py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json
+
+  # 指定输出目录（默认 data/forecast/）；--no-csv 只写 JSON 不生成 CSV
+  py fetch_profit_forecast.py --ticker 002463.SZ --outdir ../data
 """
 import argparse
 import csv
@@ -277,6 +293,9 @@ def main():
         tlist = load_companies_from_json(json_path)
     elif args.from_csv:
         tlist = load_targets_from_csv(args.from_csv)
+        if not tlist:
+            print('公司列表 CSV 中未找到任何公司（需要「股票代码」列）。')
+            return 1
     else:
         tickers = args.ticker or args.tickers
         if not tickers:

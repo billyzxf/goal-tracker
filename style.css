@@ -124,6 +124,9 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 14px;font-size:12px;color:var(--ink2);font-weight:600}
 .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* 公司列表搜索框（公司估值 / 财报跟踪模块通用） */
+.kw-search{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);font-size:14px;outline:none;margin-bottom:12px}
+.kw-search:focus{border-color:var(--indigo);box-shadow:0 0 0 2px rgba(91,100,242,.12)}
 /* 财报跟踪：自定义数值筛选条（紧凑单行） */
 .earn-filterbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .earn-filterbar select,.earn-filterbar input[type=number],.earn-filterbar input[type=text]{
@@ -219,6 +222,25 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:6px;padding-top:14px;border-top:1px solid var(--line)}
 .md-preview{border:1px dashed var(--line);border-radius:10px;padding:12px 14px;margin-top:8px;background:var(--bg2)}
 .preview-toggle{margin-top:8px}
+
+/* ---------- 估值弹窗 · 参考指标区（行情 / 最新季度财务 / 一致预期） ---------- */
+.ref-panel{border:1px solid var(--line);border-radius:12px;padding:10px 14px 12px;margin-bottom:14px;background:var(--bg2)}
+.ref-panel .ref-group + .ref-group{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.ref-group-title{font-size:11px;font-weight:700;color:var(--ink2);letter-spacing:.5px;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.ref-stats{display:flex;gap:6px 16px;flex-wrap:wrap}
+.ref-stat{display:flex;flex-direction:column;gap:1px}
+.ref-stat .label{font-size:11px;color:var(--ink2)}
+.ref-stat .val{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ref-stat.fill{cursor:pointer;border-radius:8px;padding:2px 7px;margin:-2px -7px;transition:background .15s}
+.ref-stat.fill:hover{background:var(--indigo-bg)}
+.ref-stat.fill .val{color:var(--indigo)}
+.ref-table{width:100%;border-collapse:collapse;font-size:12px}
+.ref-table th,.ref-table td{padding:3px 8px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line);white-space:nowrap}
+.ref-table thead th{color:var(--ink2);font-weight:600}
+.ref-table tbody tr:last-child th,.ref-table tbody tr:last-child td{border-bottom:none}
+.ref-table th:first-child,.ref-table td:first-child{text-align:left;color:var(--ink2);font-weight:600}
+.ref-fill{display:inline-block;margin-left:5px;padding:0 6px;font-size:11px;font-weight:700;line-height:16px;border-radius:999px;background:var(--indigo-bg);color:var(--indigo);cursor:pointer;user-select:none}
+.ref-fill:hover{filter:brightness(.95)}
 
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media (max-width:1080px){.dash-grid,.dash-grid-4,.two-col{grid-template-columns:1fr}}
@@ -542,6 +564,17 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .macro-table-actions{display:flex;gap:8px;flex-wrap:wrap}
 .up-badge{background:var(--pink-bg);color:var(--pink)}
 .down-badge{background:var(--green-bg);color:var(--green-dk)}
+
+/* ================= 公司估值 · 公司组 ================= */
+/* 选中组时的操作条（导出/管理/删除） */
+.group-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--indigo-bg);border:1px solid var(--line);border-left:3px solid var(--indigo);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px}
+.gb-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* 公司卡片上的组多选框 */
+.cc-sel{display:inline-flex;align-items:center;margin-right:8px}
+.cc-sel input{width:16px;height:16px;accent-color:var(--indigo);cursor:pointer}
+/* 底部浮动选择条（勾选公司后出现） */
+.val-selbar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 16px;box-shadow:0 8px 24px rgba(0,0,0,.16);z-index:60;font-size:13px;white-space:nowrap}
+.val-selbar b{color:var(--indigo)}
 
 /* ================= 门槛追踪 ================= */
 /* 导入导出说明提示条 */

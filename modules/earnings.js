@@ -239,6 +239,9 @@
 
     // ---- 过滤（提前计算：统计概览的「当前展示」卡片与表格共用同一份 list）----
     let list = rows.slice();
+    // 公司名称 / 股票代码搜索：支持汉字原文、全拼、拼音首字母（见 core.js kwMatch），与其余筛选叠加
+    const kw = String(state.earnKw || '').trim().toLowerCase();
+    if(kw) list = list.filter(r => kwMatch(r['公司名称'], kw) || kwMatch(r['股票代码'], kw));
     if(state.earnIndustries && state.earnIndustries.length) list = list.filter(r => state.earnIndustries.includes(r['行业']));
     if(state.earnBoards && state.earnBoards.length) list = list.filter(r => state.earnBoards.includes(r['板块']));
     if(state.earnFilterLow) list = list.filter(r => {
@@ -272,6 +275,9 @@
       '<div class="val-stat"><div class="vs-label">有披露日期</div><div class="vs-value">' + rows.filter(r => r['披露日期']).length + '</div></div>' +
       '<div class="val-stat"><div class="vs-label">✅ 当前展示</div><div class="vs-value up">' + list.length + '</div><div class="vs-sub">满足全部筛选条件 · ' + Math.round(list.length / rows.length * 100) + '%</div></div>' +
       '</div>';
+
+    // ---- 公司名称搜索框（输入实时过滤下方表格）----
+    h += '<input type="text" class="kw-search" placeholder="🔍 搜索公司名称 / 股票代码…" data-input="earn.kw" value="' + esc(state.earnKw || '') + '" style="margin-top:12px">';
 
     // ---- 筛选 chips：行业（多选，点击切换选中，再点取消；不选 = 全部）----
     const industries = [...new Set(rows.map(r => r['行业']).filter(Boolean))];
@@ -388,7 +394,7 @@
     lastList = list;   // 记录当前过滤+排序结果，供「⬇ 导出 CSV」使用
 
     if(!list.length){
-      h += '<div class="card"><div class="empty">当前筛选条件下没有符合条件的公司</div></div>';
+      h += '<div class="card"><div class="empty">' + (kw ? '没有匹配「' + esc(String(state.earnKw||'').trim()) + '」的公司' : '当前筛选条件下没有符合条件的公司') + '</div></div>';
       return h;
     }
 
@@ -616,6 +622,7 @@
           state.earnFilterLow = true;
           state.earnCustomFilters = [];
           state.earnIndustries = []; state.earnBoards = [];
+          state.earnKw = '';
           save(); render();
         }
       },
@@ -740,6 +747,14 @@
         if(state.view === 'valuation'){ render(); }
         else { location.hash = '#/valuation'; }
       },
+    },
+    inputs: {
+      // 公司列表搜索框：renderKeep 保持输入框焦点与光标位置；
+      // 120ms 去抖合并连续击键，减少每键全量重绘带来的闪烁
+      'earn.kw': (function(){
+        let t = 0;
+        return function(el){ state.earnKw = el.value; clearTimeout(t); t = setTimeout(function(){ renderKeep('earn.kw'); }, 120); };
+      })(),
     },
   });
 })();

@@ -13,6 +13,7 @@ const CORE = [
   './index.html',
   './style.css',
   './core.js',
+  './lib/pinyin-pro.js',
   './boot.js',
   './mobile.js',
   './manifest.json',

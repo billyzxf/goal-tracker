@@ -138,15 +138,33 @@ def load_companies(json_path):
     return (d.get('valuation', {}).get('companies') or [])
 
 
+def _norm_ticker(s):
+    """'601138' / '601138.SH' → '601138.SH'；无法识别返回原值大写。
+    无后缀时按代码前缀推断市场（60/68/90→SH，00/30/20/39→SZ，其余→BJ）。"""
+    s = str(s or '').strip().upper()
+    m = re.match(r'^(\d{6})(?:\.(SH|SZ|BJ))?$', s)
+    if not m:
+        return s or ''
+    code, mkt = m.group(1), m.group(2)
+    if not mkt:
+        if code.startswith(('60', '68', '90')):
+            mkt = 'SH'
+        elif code.startswith(('00', '30', '20', '39')):
+            mkt = 'SZ'
+        else:
+            mkt = 'BJ'
+    return '%s.%s' % (code, mkt)
+
+
 def load_companies_from_csv(path):
     """从公司列表 CSV 读取 [{ticker, name}]，需含「股票代码」列（「公司名称」可选）。
-    兼容估值模块「⬇ 导出公司列表」格式（股票代码,公司名称,市场,板块,行业,林奇类型,行业细分,货币,现价,总股本）；
-    # 注释行跳过，按股票代码去重。"""
+    兼容三种来源格式：估值模块「⬇ 导出公司列表」/ 财报跟踪「⬇ 导出 CSV」/ 公司组「📤 导出该组」；
+    支持 6 位纯代码（自动推断 .SH/.SZ/.BJ 后缀）；# 注释行跳过，按股票代码去重。"""
     with open(path, encoding='utf-8-sig') as f:
         lines = [ln for ln in f if not ln.lstrip().startswith('#')]
     out, seen = [], set()
     for r in csv.DictReader(lines):
-        t = str(r.get('股票代码') or '').strip().upper()
+        t = _norm_ticker(r.get('股票代码'))
         if not re.match(r'^\d{6}\.(SH|SZ|BJ)$', t) or t in seen:
             continue
         seen.add(t)

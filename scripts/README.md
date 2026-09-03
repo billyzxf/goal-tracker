@@ -53,7 +53,8 @@ py fetch_financial.py --ticker 688256.SH
 # 抓取多只（逗号分隔）
 py fetch_financial.py --tickers 601138.SH,000977.SZ,300308.SZ
 
-# 从任意公司列表 CSV 批量抓取（兼容估值模块导出 / 财报跟踪导出格式，列：股票代码[,公司名称]）
+# 从任意公司列表 CSV 批量抓取（兼容估值模块「⬇ 导出公司列表」/ 财报跟踪「⬇ 导出 CSV」/
+# 公司组「📤 导出该组」三种格式，列：股票代码[,公司名称]，6 位纯代码也可）
 py fetch_financial.py --from-csv ../data/公司列表.csv
 
 # 指定公司列表来源 JSON / 输出目录
@@ -149,7 +150,7 @@ py fetch_earnings.py --date 2026-08-12 --all-market
 # 默认读取 data/公司列表.csv 生成当日行情快照 CSV（不存在时回退 data/goal-tracker-data.json）
 py fetch_prices.py
 
-# 指定公司列表来源 CSV / JSON
+# 指定公司列表来源 CSV / JSON（CSV 兼容估值模块导出 / 财报跟踪导出 / 公司组导出格式，6 位纯代码也可）
 py fetch_prices.py --from-csv ../data/公司列表.csv
 py fetch_prices.py --json ../data/goal-tracker-data.json
 
@@ -200,8 +201,9 @@ py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json
 # 全量更新：只写 JSON，不生成 CSV
 py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json --no-csv
 
-# 从任意公司列表 CSV 批量抓取（兼容估值模块导出 / 财报跟踪导出格式）
-py fetch_profit_forecast.py --from-csv ../data/公司列表.csv
+# 从任意公司列表 CSV 批量抓取（兼容估值模块「⬇ 导出公司列表」/ 财报跟踪「⬇ 导出 CSV」/
+# 公司组「📤 导出该组」三种格式；适合只分析某个公司组，无需全量列表）
+py fetch_profit_forecast.py --from-csv ../data/公司组_AI算力_2026-09-03.csv
 ```
 
 **更新单个公司**：
@@ -244,6 +246,20 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 ```
 
 > 若用 `--update-json` 直接更新了 `goal-tracker-data.json`，需在浏览器「⬆ 导入数据」重新导入该 JSON（会覆盖 IndexedDB，建议先「⬇ 导出备份」）。
+
+### 公司组分析工作流
+
+估值模块勾选若干公司 → 建公司组（如「AI算力」）→「📤 导出该组」得到 `公司组_组名_日期.csv`，三个抓取脚本都可直接消费（无需全量列表）：
+
+```
+→ py scripts/fetch_financial.py --from-csv 公司组_AI算力_2026-09-03.csv        （抓财务）
+→ py scripts/fetch_profit_forecast.py --from-csv 公司组_AI算力_2026-09-03.csv  （抓盈利预测）
+→ py scripts/fetch_prices.py --from-csv 公司组_AI算力_2026-09-03.csv           （抓行情快照）
+→ 公司估值「⬆ 批量导入财务」+「⬆ 批量导入预测」+「⬆ 导入股价」
+```
+
+> 公司组成员按股票代码记录：公司删除后组保留，重新导入同一代码自动回到组；
+> 未导入的成员在组操作条中黄字提示，抓取脚本会照常抓取（`--from-csv` 只依赖「股票代码」列）。
 
 ## 数据来源与字段说明
 

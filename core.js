@@ -24,6 +24,36 @@ function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace
 function fmtCN(dstr){ const d = dstr ? new Date(dstr + 'T00:00:00') : new Date();
   return d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' + WEEK_CN[d.getDay()]; }
 
+/* ================= 拼音模糊搜索 =================
+ * 依赖 lib/pinyin-pro.js（UMD 构建 → window.pinyinPro，index.html 引入）。
+ * 库未加载成功（如离线旧缓存）时自动退化为原文匹配，不影响使用。
+ * kwMatch(text, kw)：汉字原文包含 / 汉字全拼包含 / 拼音首字母包含，均不区分大小写。
+ * 例：「汉」可被 han / h 匹配，「长城汽车」可被 changcheng 或 ccqc 匹配。
+ */
+const KW_PY_CACHE = new Map();   // 文本 → [全拼, 首字母串]（小写），缓存避免每次输入重复转换
+function pinyinPair(text){
+  let pair = KW_PY_CACHE.get(text);
+  if(!pair){
+    let py = '', abbr = '';
+    if(window.pinyinPro && /[\u4e00-\u9fa5]/.test(text)){
+      try{
+        py = window.pinyinPro.pinyin(text, { toneType:'none', type:'array', nonZh:'consecutive' }).join('').toLowerCase();
+        abbr = window.pinyinPro.pinyin(text, { pattern:'first', toneType:'none', type:'array', nonZh:'consecutive' }).join('').toLowerCase();
+      }catch(err){ /* 库异常时退化为原文匹配 */ }
+    }
+    pair = [py, abbr];
+    KW_PY_CACHE.set(text, pair);
+  }
+  return pair;
+}
+function kwMatch(text, kw){
+  if(!kw) return true;
+  const t = String(text == null ? '' : text).toLowerCase();
+  if(t.includes(kw)) return true;
+  const py = pinyinPair(t);
+  return (py[0] && py[0].includes(kw)) || (py[1] && py[1].includes(kw));
+}
+
 /* ================= 深色模式 =================
  * 主题由 index.html 的内联脚本在首帧前应用（防闪白），
  * 这里负责切换、持久化与 UI 状态（按钮文案 / meta theme-color）同步。
@@ -313,7 +343,9 @@ function addForm(form, ph, btnText){
 /* ================= 弹窗 ================= */
 const modalRoot = $('#modal-root');
 function openModal(title, bodyHtml, formName, onMounted, readOnly){
-  modalRoot.innerHTML = '<div class="modal-mask" data-action="modal.cancel"><div class="modal">' +
+  // 弹窗仅能通过右上角 ✕ 或底部「取消/关闭」按钮关闭：遮罩层不绑定 data-action，
+  // 避免误点弹窗外空白区域导致已填写内容被清空
+  modalRoot.innerHTML = '<div class="modal-mask"><div class="modal">' +
     '<div class="modal-head"><h3>' + title + '</h3><button class="icon-btn" data-action="modal.cancel">✕</button></div>' +
     '<form class="modal-body" data-form="' + (formName || '') + '">' + bodyHtml +
     '<div class="modal-foot"><button type="button" class="btn ghost" data-action="modal.cancel">' + (readOnly ? '关闭' : '取消') + '</button>' +
@@ -391,7 +423,6 @@ window.addEventListener('hashchange', () => {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if(!el) return;
-  if(el.classList.contains('modal-mask') && e.target.closest('.modal')) return;
   const fn = ACTIONS[el.dataset.action];
   if(fn){ e.preventDefault(); fn(el, e); }
 });
@@ -402,7 +433,17 @@ document.addEventListener('change', e => {
   if(fn) fn(el);
 });
 document.addEventListener('input', e => {
+  // 中文输入法组词期间（拼音候选未上屏，e.isComposing = true）不触发过滤，
+  // 否则每次按键重渲染会打断 IME 组合会话，导致拼音字母残留堆积（如输入 han 变成 hhhaaannn）
+  if(e.isComposing) return;
   const el = e.target.closest('[data-input]');
+  if(!el) return;
+  const fn = INPUTS[el.dataset.input];
+  if(fn) fn(el);
+});
+// 输入法组词结束（选字上屏 / Esc 取消后确认）时统一触发一次过滤
+document.addEventListener('compositionend', e => {
+  const el = e.target.closest && e.target.closest('[data-input]');
   if(!el) return;
   const fn = INPUTS[el.dataset.input];
   if(fn) fn(el);
@@ -414,7 +455,6 @@ document.addEventListener('submit', e => {
   const fn = FORMS[form.dataset.form];
   if(fn) fn(new FormData(form), form);
 });
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 $('#import-file').addEventListener('change', e => {
   const file = e.target.files[0]; if(!file) return;
   const reader = new FileReader();
