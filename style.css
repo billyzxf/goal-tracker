@@ -853,6 +853,9 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
   }
   .val-table th,.val-table td{padding:7px 8px}
   .val-table .num{white-space:nowrap}
+  /* 待击球表：窄屏隐藏次要列（中枢/减持区/分批/上限） */
+  .swing-opt{display:none}
+  .swing-arch{flex-direction:column}
 
   /* 表单 / 参数行换行，避免横向溢出 */
   .param-grid .field{min-width:100%}
@@ -919,3 +922,26 @@ html.dark .pr-star{color:#4b5563}
 html.dark .btn.danger-ghost{border-color:rgba(241,106,106,.4)}
 /* 深色下雪碧噪点类阴影过重，收敛卡片阴影 */
 html.dark .th-card:hover,html.dark .company-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.4)}
+
+/* ---------- 待击球系统（swing.js） ---------- */
+/* 仓位架构卡：三列并排 */
+.swing-arch{display:flex;gap:10px;margin:10px 0}
+.swing-arch-col{flex:1;margin:0;padding:12px 14px}
+/* 六铁律紧凑列表 */
+.swing-rule-list{margin:10px 0 0;padding-left:22px;line-height:1.9;font-size:13px}
+/* 距买点徽标：默认灰 / 候击区 amber / 已到买点 green */
+.swing-gap-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;
+  background:var(--bg2);color:var(--ink2)}
+.swing-gap-tag.hot{background:rgba(240,168,50,.15);color:var(--amber,#d97706)}
+.swing-gap-tag.hit{background:rgba(16,163,127,.15);color:var(--green,#0ea97b)}
+/* 公司名可点击跳转估值详情 */
+.swing-name-link{cursor:pointer;color:var(--indigo)}
+.swing-name-link:hover{text-decoration:underline}
+/* 复核日：临期 amber / 过期 red */
+.swing-review-warn{color:var(--amber,#d97706);font-weight:600}
+.swing-review-over{color:var(--red);font-weight:600}
+/* 展开详情行 */
+.swing-detail-row td{background:var(--bg2)}
+.swing-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;font-size:13px}
+.swing-events{margin:6px 0 0;padding-left:18px;line-height:1.8;font-size:12.5px}
+.swing-events .muted{margin-right:4px}

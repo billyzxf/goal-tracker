@@ -31,6 +31,7 @@ const CORE = [
   './modules/val-core.js',
   './modules/valuation.js',
   './modules/earnings.js',
+  './modules/swing.js',
   './modules/macro.js',
   './modules/principles.js'
 ];

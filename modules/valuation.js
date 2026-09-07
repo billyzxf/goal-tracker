@@ -776,6 +776,9 @@
     let h = '<span class="back-link" data-action="val.back">← 返回公司列表</span>';
     h += '<div class="page-head"><div><h1>' + esc(c.name) + (c.market === 'A股' && c.board ? ' <span class="badge ' + (BOARD_CLS[c.board]||'gray') + '">' + esc(c.board) + '</span>' : '') + (c.industry ? ' <span class="badge ' + (INDUSTRY_CLS[c.industry]||'gray') + '">' + esc(c.industry) + '</span>' : '') + (c.companyType ? ' <span class="badge ' + (LYNCH_TYPE_CLS[c.companyType]||'gray') + '" title="' + esc(LYNCH_TYPE_DESC[c.companyType]||'') + '">' + esc(c.companyType) + '</span>' : '') + '</h1><div class="muted">' + esc(c.ticker||'') + ' · ' + esc(c.market||'') + (c.market === 'A股' && c.board ? ' · ' + esc(c.board) : '') + (c.industry ? ' · ' + esc(c.industry) : '') + (c.companyType ? ' · ' + esc(c.companyType) : '') + ' · ' + esc(c.sector||'') + (c.currency ? ' · ' + c.currency : '') + '</div></div>' +
       '<div class="head-actions"><button class="btn ghost sm" data-action="val.addGroup" data-id="' + c.id + '" title="把该公司加入某个公司组，或新建组">🏷 公司组</button>' +
+        (window.SwingLink && SwingLink.findByTicker(c.ticker)
+          ? '<button class="btn ghost sm" data-action="swing.openFromVal" data-ticker="' + esc(c.ticker || '') + '" title="该公司已在待击球台账，点击跳转并展开对应条目">⚾ 到待击球</button>'
+          : '<button class="btn ghost sm" data-action="swing.addFromVal" data-ticker="' + esc(c.ticker || '') + '" data-name="' + esc(c.name || '') + '" title="带出代码/名称，加入待击球台账">🎯 加入待击球</button>') +
       '<button class="btn ghost sm" data-action="val.editCompany" data-id="' + c.id + '">✎ 编辑</button>' +
       '<button class="btn danger-ghost sm" data-action="val.delCompany" data-id="' + c.id + '">🗑 删除</button></div></div>';
 
