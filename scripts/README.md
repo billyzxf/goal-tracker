@@ -17,6 +17,7 @@
 | `fetch_earnings.py` | 按披露日期批量抓取最新财报 → 财报跟踪 CSV | `data/earnings/` |
 | `fetch_prices.py` | 批量拉取行情快照（现价/涨跌/PE/成交等）→ 股价 CSV | `data/prices/` |
 | `fetch_macro_all.py` | 统一宏观脚本（东财+akshare 全部指标，支持增量） | `data/macro/` |
+| `fetch_daily.py` | 宏观每日增量（仅日度/周度指标，只补缺失日期） | `data/macro/` |
 | `fetch_macro.py` | 东财宏观指标（GDP/CPI/PPI/PMI 等） | `data/macro/` |
 | `fetch_macro_ak.py` | akshare 宏观指标（债务/货币/国际） | `data/macro/` |
 | `fetch_profit_forecast.py` | 东财 F10 盈利预测（券商明细+一致预期）→ CSV / 写入 JSON | `data/forecast/` |
@@ -177,6 +178,18 @@ py fetch_macro_all.py --outdir ../data/macro
 ```
 
 生成：`data/macro/宏观经济_全部数据.csv`（含「国内宏观经济」+「国际宏观经济」两张表，23 个指标）
+
+**每日增量脚本（推荐每日跑）**：只更新日度/周度指标，且只补 CSV 中缺失的日期，请求量与耗时就小：
+
+```bash
+py fetch_daily.py                # 日度+周度，只补缺失日期（默认）
+py fetch_daily.py --freq 日度    # 只更日度
+py fetch_daily.py --force        # 忽略已有日期全部重抓（覆盖同日值）
+```
+
+- 月度指标（GDP/CPI/PMI/LPR/M1/M2 等）不在其范围，仍由 `fetch_macro_all.py` 周/月跑一次维护。
+- 已配置 GitHub Actions 每日任务（`.github/workflows/macro-data.yml`），也可用 Windows 计划任务（脚本头部注释有 `schtasks` 示例）。
+- 日志：控制台 + `data/macro/fetch_daily.log`（1MB 滚动、保留 3 份），单指标 600s 看门狗防数据源挂死。
 
 **单独脚本**：
 ```bash
