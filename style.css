@@ -476,7 +476,11 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .daily-item .d-name{font-size:11px;color:var(--ink2);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .daily-item .d-val{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
 .daily-item .d-val small{font-size:11px;font-weight:600;margin-left:3px;color:var(--ink2)}
-.daily-item .d-date{font-size:10px;margin-top:2px}
+.daily-item .d-chg{font-size:10.5px;font-weight:700;margin-left:6px;font-variant-numeric:tabular-nums}
+.daily-item .d-chg.muted{color:var(--ink2)}
+.daily-item .d-date{font-size:10px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daily-item.is-stale{border-style:dashed;opacity:.78}
+.stale-tip{color:var(--amber);font-weight:700;cursor:help;flex:none}
 .daily-fedwatch{margin-top:10px;font-size:13px;background:var(--indigo-bg);border-radius:8px;padding:8px 12px;color:var(--ink)}
 .macro-layer{margin-top:16px}
 .macro-layer-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-left:4px solid var(--indigo);border-radius:8px;margin-bottom:14px}
@@ -490,6 +494,22 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .quad-cell span{font-size:11px;color:var(--ink2)}
 .quad-cell.quad-cur{opacity:1;background:var(--indigo-bg);border-color:var(--indigo);font-weight:700}
 .quad-verdict{margin-top:10px;font-size:13px;font-weight:600;color:var(--indigo)}
+/* Regime 打分依据（参评指标 / 未参评原因 / 样本可靠性） */
+.qb-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-top:12px}
+@media(max-width:760px){.qb-grid{grid-template-columns:1fr}}
+/* Regime 卡片左右布局：四象限在左，打分依据在右侧空白区（窄屏自动堆叠） */
+.regime-layout{display:grid;grid-template-columns:minmax(0,460px) minmax(0,1fr);gap:14px 22px;align-items:start}
+.regime-layout .qb-grid{grid-template-columns:1fr;gap:12px;margin-top:0}
+@media(max-width:1150px){.regime-layout{grid-template-columns:1fr}}
+.qb{border-top:1px dashed var(--line);padding-top:8px;min-width:0}
+.qb-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px}
+.qb-sub{font-size:11px;color:var(--ink2)}
+.qb-items{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:6px}
+.qb-item{font-size:11px;padding:2px 6px;border-radius:6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qb-good{background:var(--green-bg);color:var(--green-dk)}
+.qb-bad{background:var(--pink-bg);color:var(--pink)}
+.qb-skip{font-size:11px;color:var(--ink2);margin-top:6px;line-height:1.5}
+.qb-warn{font-size:11px;color:var(--amber);font-weight:700;margin-top:6px;line-height:1.5}
 .macro-spread .spread-line{font-size:15px}
 .macro-spread .spread-line b{font-size:20px}
 

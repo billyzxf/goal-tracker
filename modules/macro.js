@@ -63,6 +63,16 @@
     unemp:  { layer:'cn_econ', importance:'B' },
     fed:    { layer:'global_liq', importance:'S', direction:'down_good', scoreLayer:'liquidity' },
     us10y:  { layer:'global_liq', importance:'S', direction:'down_good', scoreLayer:'liquidity' },
+    // 估值层：PE 环比上行=估值扩张（偏多），下行=估值收缩（偏空），与 Regime 四象限口径一致
+    hs300pe:  { layer:'market', importance:'S', direction:'up_good', scoreLayer:'valuation' },
+    csi500pe: { layer:'market', importance:'A', direction:'up_good', scoreLayer:'valuation' },
+    allape:   { layer:'market', importance:'A', direction:'up_good', scoreLayer:'valuation' },
+    // 补充参考指标（已接入自动抓取，用于替代拿不到的分项数据）
+    elec:      { layer:'cn_econ', importance:'A', direction:'up_good', scoreLayer:'growth' },
+    czsr:      { layer:'cn_econ', importance:'B', direction:'up_good', scoreLayer:'growth' },
+    boom:      { layer:'cn_econ', importance:'B', direction:'up_good', scoreLayer:'growth' },
+    newcredit: { layer:'cn_liq',  importance:'A', direction:'up_good', scoreLayer:'growth' },
+    commprice: { layer:'price',   importance:'A', direction:'up_good', scoreLayer:'growth' },
   };
   // 日期筛选范围（所有指标共用同一套按钮）。key 存 state.macroRange
   const MACRO_RANGES = [
@@ -136,8 +146,10 @@
       [['2023-06',5.50],['2023-12',5.50],['2024-06',5.50],['2024-12',4.50],['2025-06',4.00],['2025-12',3.75],['2026-03',3.50],['2026-06',3.25]]);
 
     /* ===== 第二层 · 中国流动性 ===== */
-    put('dr007', 'DR007（7天回购利率）', '货币与金融', '%', '日度', 'cn_liq', 'S', 'down_good', 'liquidity',
-      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。', null);
+    put('dr007', '银行间 7 天回购利率', '货币与金融', '%', '日度', 'cn_liq', 'S', 'down_good', 'liquidity',
+      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。数据取 FR007 回购定盘利率（与 DR007 高度同步的公开可得替代）。', null);
+    put('newcredit', '新增人民币贷款同比', '货币与金融', '%', '月度', 'cn_liq', 'A', 'up_good', 'growth',
+      '信用扩张的流量观测：新增贷款同比回升=实体融资需求改善（存量看社融，目前需手动录入）。', null);
     put('cn1y', '中国 1Y 国债收益率', '货币与金融', '%', '日度', 'cn_liq', 'A', 'down_good', 'liquidity',
       '短端无风险利率，反映银行体系资金成本。', null);
     put('cn10y', '中国 10Y 国债收益率', '货币与金融', '%', '日度', 'cn_liq', 'S', null, null,
@@ -188,6 +200,12 @@
     put('exports', '出口同比', '国内经济', '%', '月度', 'cn_econ', 'S', 'up_good', 'growth',
       '外需是中国宏观周期重要支撑。重点看"超预期/低于预期"而非绝对值。',
       [['2024-06',10.7],['2024-12',10.9],['2025-06',5.8],['2025-12',6.7],['2026-06',12.5],['2026-07',14.0]]);
+    put('elec', '全社会用电量同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
+      '经济晴雨表：用电量比 GDP 更实时地反映工业生产与经济活动强度。', null);
+    put('czsr', '财政收入同比', '国内经济', '%', '月度', 'cn_econ', 'B', 'up_good', 'growth',
+      '财政发力程度：收入改善配合支出扩张，对基建与总需求形成支撑。', null);
+    put('boom', '企业景气指数', '国内经济', '', '季度', 'cn_econ', 'B', 'up_good', 'growth',
+      '央行调查的企业景气度（>100 为景气区间）：环比改善=企业预期回暖。', null);
     put('prop_sale', '商品房销售面积同比', '国内经济', '%', '月度', 'cn_econ', 'S', 'up_good', 'growth',
       '地产是信用之母：销售恢复→开发商现金流→拿地投资→建材家电→银行信用→财富效应。销售比开工更重要。', null);
     put('unemp', '城镇调查失业率', '就业与民生', '%', '月度', 'cn_econ', 'B', null, null,
@@ -203,12 +221,14 @@
     put('ppi', 'PPI 同比', '物价通胀', '%', '月度', 'price', 'S', 'up_good', 'growth',
       '工业品出厂价格：直接决定工业企业"收入-成本=利润"。对钢铁/化工/有色/煤炭影响明显。对 A 股重要性不低于 CPI。',
       [['2023-06',-5.4],['2023-12',-2.7],['2024-06',-0.8],['2024-12',-2.3],['2025-06',-2.0],['2025-12',-1.5],['2026-03',-1.2],['2026-06',-0.9],['2026-07',3.5]]);
+    put('commprice', '大宗商品价格指数', '物价通胀', '', '日度', 'price', 'A', 'up_good', 'growth',
+      'PPI 的领先观测：大宗商品价格上行→工业企业成本与通胀预期变化；日度更新更及时。', null);
 
     /* ===== 第五层 · 市场自身 ===== */
     put('turnover', 'A股成交额', '市场', '万亿', '日度', 'market', 'S', 'up_good', 'valuation',
       '指数涨但成交额缩（2万亿→1.3万亿）不健康；横盘但放量可能在风格切换。', null);
-    put('hs300pe', '沪深300 PE', '市场', '倍', '周度', 'market', 'S', null, 'valuation',
-      '估值本身无意义，历史分位数才有意义（如 18 倍若处于 10 年 95% 分位则完全不同）。用于计算股债收益差。', null);
+    put('hs300pe', '沪深300 PE', '市场', '倍', '周度', 'market', 'S', 'up_good', 'valuation',
+      '估值本身无意义，历史分位数才有意义。方向口径：PE 环比上行=估值扩张（偏多）、下行=估值收缩（偏空）；同时用于计算股债收益差。', null);
     put('us30y', '美债 30Y 收益率', '海外与利率', '%', '日度', 'global_liq', 'B', 'down_good', 'liquidity',
       '长期通胀、财政与债务预期、期限溢价。30Y 快速上行常反映财政/通胀担忧。', null);
     put('breakeven', '10Y 盈亏平衡通胀', '海外与利率', '%', '日度', 'global_liq', 'A', null, null,
@@ -219,10 +239,10 @@
       '配置型资金方向。持续净流入 = 增量资金入场。', null);
     put('northbound', '北向资金净流入', '市场', '亿', '日度', 'market', 'A', 'up_good', 'valuation',
       '外资风险偏好观测。持续流出常与美元走强/人民币贬值压力同期出现——先看 DXY 再解读。', null);
-    put('csi500pe', '中证500 PE', '市场', '倍', '周度', 'market', 'A', null, 'valuation',
-      '中盘估值。与沪深300 PE 对比看大小盘风格：中证500/沪深300 PE 比值走阔 = 成长/小盘占优。', null);
-    put('allape', '全部A股市盈率', '市场', '倍', '周度', 'market', 'A', null, 'valuation',
-      '全市场估值中枢，代表整体贵贱。同样必须结合历史分位数看（见卡片上的分位徽章）。', null);
+    put('csi500pe', '中证500 PE', '市场', '倍', '周度', 'market', 'A', 'up_good', 'valuation',
+      '中盘估值。与沪深300 PE 对比看大小盘风格；方向口径同沪深300 PE（环比上行=估值扩张）。', null);
+    put('allape', '全部A股市盈率', '市场', '倍', '周度', 'market', 'A', 'up_good', 'valuation',
+      '全市场估值中枢，必须结合历史分位数看（见卡片上的分位徽章）；方向同沪深300 PE（环比上行=估值扩张）。', null);
     return { groups, fedwatch: [
       { id:uid(), meeting:'2026-09', cut:20, hold:50, hike:30, updated:dateStr() },
       { id:uid(), meeting:'2026-10', cut:35, hold:45, hike:20, updated:dateStr() },
@@ -254,14 +274,15 @@
     (m.groups||[]).forEach(g => (g.indicators||[]).forEach(i => {
       const meta = KEY_META[i.key];
       if(meta){
+        // 注意：老数据的 direction 可能是 null（seed 中显式留空），用 == null 一并按映射补齐
         ['layer','importance','direction','scoreLayer'].forEach(k => {
-          if(i[k] === undefined && meta[k] !== undefined){ i[k] = meta[k]; changed = true; }
+          if(i[k] == null && meta[k] !== undefined){ i[k] = meta[k]; changed = true; }
         });
       }
       if(i.interpret === undefined){ i.interpret = ''; }
     }));
     // ---- 迁移2：合并 seed 新指标 + FedWatch（按 key 去重，只补缺失，版本化一次性执行） ----
-    const SEED_VER = 4;
+    const SEED_VER = 5;
     if((m.seedDataVersion || 0) < SEED_VER){
       const sv = seed();
       const byKey = {};
@@ -289,13 +310,21 @@
   function ind(name){ return allIndicators().find(i => i.key === name); }
 
   // 取指标最后一个值及其环比变化（相邻两个点的差值）
+  // 环比仅在相邻两期处于正常间隔内才有效（跨期断层如"2026-08"月度点接日度点，不能当上一期用）
   function latest2(i){
     const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
-    if(!pts.length) return { latest:null, prev:null, delta:null };
+    if(!pts.length) return { latest:null, prev:null, delta:null, date:null, prevDate:null, gap:null, contig:false };
     const latest = pts[pts.length-1];
     const prev = pts.length > 1 ? pts[pts.length-2] : null;
+    const ok = prev && prev.value != null && latest.value != null && !isNaN(prev.value) && !isNaN(latest.value);
+    let gap = null, contig = false;
+    if(ok){
+      gap = dayGap(prev.date, latest.date);
+      contig = (gap == null) ? true : (gap >= 0 && gap <= (CONTIG_DAYS[i.freq] || 62));
+    }
     return { latest: latest.value, prev: prev ? prev.value : null,
-      delta: prev ? latest.value - prev.value : null, date: latest.date };
+      delta: (ok && contig) ? latest.value - prev.value : null,
+      date: latest.date, prevDate: prev ? prev.date : null, gap, contig };
   }
   function fmtNum(n, unit, digits){
     if(n == null || n === '' || isNaN(n)) return '<span class="muted">—</span>';
@@ -307,6 +336,117 @@
     const cls = delta > 0 ? 'up' : (delta < 0 ? 'down' : 'muted');
     const sign = delta > 0 ? '↑' : (delta < 0 ? '↓' : '→');
     return ' <span class="' + cls + '" style="font-size:12px">' + sign + ' ' + Math.abs(delta).toFixed(2) + (unit||'') + '</span>';
+  }
+
+  /* ----- 数据新鲜度（防止用陈旧数据打分/发信号） -----
+   * FRESH_DAYS：各频率允许的最大滞后天数（按"期末日"计，如 '2026-07' 从 7/31 起算）
+   * CONTIG_DAYS：相邻两期的最大正常间隔（超过则视为跨期断层，环比无效）
+   */
+  const FRESH_DAYS  = { '日度':7,  '周度':21, '月度':45,  '季度':120, '年度':400 };
+  const CONTIG_DAYS = { '日度':4,  '周度':21, '月度':62,  '季度':200, '年度':400 };
+  // 日期字符串 → 该期最后一天（'2026-08-29'→自身；'2026-08'→月末；'2026Q2'→季末；'2026'→年末）
+  function periodEndDate(s){
+    const str = String(s||'').trim();
+    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+    m = str.match(/^(\d{4})-(\d{2})$/);
+    if(m) return new Date(+m[1], +m[2], 0);          // 该月最后一天
+    m = str.match(/^(\d{4})Q([1-4])$/);
+    if(m) return new Date(+m[1], +m[2]*3, 0);       // 该季最后一天
+    m = str.match(/^(\d{4})$/);
+    if(m) return new Date(+m[1], 12, 0);            // 12/31
+    return null;
+  }
+  // 最新数据距今的滞后天数（无法解析返回 null；未来日期按 0）
+  function staleness(i){
+    const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
+    if(!pts.length) return null;
+    const end = periodEndDate(pts[pts.length-1].date);
+    if(!end) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.max(0, Math.round((today - end) / 86400000));
+  }
+  // 数据是否够新：可参与温度计打分与方向信号；陈旧数据只展示、不发信号
+  function freshnessOk(i){
+    const s = staleness(i);
+    if(s == null) return false;
+    return s <= (FRESH_DAYS[i.freq] || 45);
+  }
+  // 滞后徽章（无数据或数据新鲜时返回空）
+  function staleBadge(i){
+    const s = staleness(i);
+    const lim = FRESH_DAYS[i.freq] || 45;
+    if(s == null || s <= lim) return '';
+    return '<span class="badge amber stale-tip" title="最新数据距今 ' + s + ' 天，超出「' +
+      esc(i.freq || '月度') + '」正常更新周期（' + lim + ' 天），已不参与温度计打分与轮动高亮，仅作参考">⚠ 滞后 ' + s + ' 天</span>';
+  }
+  /* seed 内置演示数据清单（key → 演示点日期）。
+   * 用途：识别"仍是示例数据"的指标——点数与清单完全一致即判定为未导入真实数据，
+   * 该类指标不参与温度计打分/轮动高亮，避免演示值冒充真实信号；
+   * 一旦导入真实 CSV 或手动补录新数据，点数变化即自动恢复参评。
+   */
+  const DEMO_POINTS = {
+    us10y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    real10y: ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    dxy:     ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    fed:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    lpr1y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    lpr5y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    tsf:     ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    m1:      ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    m2:      ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    usdcny:  ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    pmi:     ['2024-03','2024-06','2024-09','2024-12','2025-03','2025-06','2025-09','2025-12','2026-03','2026-06','2026-07'],
+    pmi_new: ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    gdp:     ['2023Q1','2023Q2','2023Q3','2023Q4','2024Q1','2024Q2','2024Q3','2024Q4','2025Q1','2025Q2'],
+    exports: ['2024-06','2024-12','2025-06','2025-12','2026-06','2026-07'],
+    unemp:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    cpi:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    ppi:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+  };
+  // 是否仍为"纯演示数据"（点数与演示清单完全一致；导入真实数据或补录后自动失效）
+  function isDemoOnly(i){
+    const ds = DEMO_POINTS[i.key];
+    if(!ds) return false;
+    const pts = i.points || [];
+    if(pts.length !== ds.length) return false;
+    const set = Object.create(null);
+    ds.forEach(d => { set[d] = 1; });
+    return pts.every(p => set[p.date]);
+  }
+  function demoBadge(i){
+    if(!isDemoOnly(i)) return '';
+    return '<span class="badge amber stale-tip" title="该指标目前仍是内置示例数据（尚未导入真实数据），不参与温度计打分与轮动高亮">示例数据</span>';
+  }
+  // 两个完整日期（YYYY-MM-DD）相差的天数；非完整日期返回 null
+  function dayGap(d1, d2){
+    const a = String(d1||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const b = String(d2||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!a || !b) return null;
+    return Math.round((Date.UTC(+b[1], +b[2]-1, +b[3]) - Date.UTC(+a[1], +a[2]-1, +a[3])) / 86400000);
+  }
+  // 日度指标「较前一日」的变化量（卡片内极简展示，细节放 title）
+  // 相邻两期若为连续日期（含跨周末 ≤4 天）视为「前一日」，否则 title 里标注真实对比日期
+  function dailyChangeHtml(i, l2){
+    if(l2.delta == null || isNaN(l2.delta) || !l2.prevDate) return '';
+    const d = l2.delta;
+    const cls = d > 0 ? 'up' : (d < 0 ? 'down' : 'muted');
+    const digits = Math.abs(d) < 0.01 ? 3 : 2;                // 微小变化（如汇率）保留 3 位，避免舍入失真
+    const abs = (d > 0 ? '+' : '') + d.toFixed(digits);
+    // title：完整对比信息（含 bp / 相对%）
+    const gap = dayGap(l2.prevDate, l2.date);
+    const when = (gap != null && gap <= 4) ? '较前一日' : ('较 ' + l2.prevDate);
+    let detail = '';
+    if(i.unit === '%'){                                       // 利率类：附带基点
+      const bp = Math.round(d * 1000) / 10;
+      if(bp) detail = '，' + (bp > 0 ? '+' : '') + bp + 'bp';
+    } else if(l2.prev != null && Math.abs(l2.prev) > 1e-9){   // 价格/指数/成交额：附带相对变化
+      const pct = d / Math.abs(l2.prev) * 100;
+      detail = '，' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+    }
+    const tip = when + '（' + l2.prevDate + '：' + Number(l2.prev).toFixed(2) + ' → ' + Number(l2.latest).toFixed(2) + '）' + abs + detail;
+    return '<span class="d-chg ' + cls + '" title="' + esc(tip) + '">' + abs + '</span>';
   }
 
   /* ----- 折线趋势图（纯 SVG，含 0 轴参考线与均值参考线） ----- */
@@ -433,6 +573,8 @@
       '<div class="sec-title"><h2>' + esc(i.name) + '</h2>' +
       '<div class="q-actions">' +
         impBadge(i.importance) +
+        demoBadge(i) +
+        staleBadge(i) +
         percentileBadge(i) +
         '<span class="badge ' + (l2.delta > 0 ? 'up-badge' : (l2.delta < 0 ? 'down-badge' : 'gray')) + '" style="font-size:11px">' + (l2.delta > 0 ? '↑' : (l2.delta < 0 ? '↓' : '→')) + '</span>' +
         '<button class="icon-btn" title="编辑指标" data-action="macro.edit" data-id="' + i.id + '">✎</button>' +
@@ -465,8 +607,16 @@
   ];
   function calcScore(tk){
     const list = allIndicators().filter(i => i.scoreLayer === tk && i.direction);
-    let good = 0, bad = 0, contrib = [];
+    let good = 0, bad = 0, contrib = [], skipped = [];
     list.forEach(i => {
+      // ① 仍是内置示例数据：不参评（导入真实数据后自动恢复）
+      if(isDemoOnly(i)){ skipped.push(i.name + '（示例数据）'); return; }
+      // ② 数据滞后（超出该频率正常更新周期）：不参评，避免用一年前的环比投票
+      if(!freshnessOk(i)){
+        const s = staleness(i);
+        skipped.push(i.name + (s == null ? '（无数据）' : '（滞后 ' + s + ' 天）'));
+        return;
+      }
       const l2 = latest2(i);
       if(l2.delta == null || isNaN(l2.delta) || l2.delta === 0) return;
       const isGood = i.direction === 'up_good' ? l2.delta > 0 : l2.delta < 0;
@@ -477,7 +627,7 @@
     const auto = n ? Math.round(good / n * 100) : null;
     const manual = Number((DB.macro.scores || {})[tk]) || 0;
     const final = auto == null ? null : Math.max(0, Math.min(100, auto + manual));
-    return { auto, manual, final, good, bad, n, contrib };
+    return { auto, manual, final, good, bad, n, contrib, skipped };
   }
   function scoreColor(v){
     if(v == null) return 'var(--gray)';
@@ -494,7 +644,8 @@
         '<span class="th-val" style="color:' + c + '">' + (s.final == null ? '—' : s.final) + '</span></div>' +
         '<div class="th-bar"><div class="th-fill" style="width:' + barW + '%;background:' + c + '"></div>' +
         '<div class="th-mid"></div></div>' +
-        '<div class="th-sub muted"><span class="th-sub-txt" title="自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 ' + (s.manual > 0 ? '+' : '') + s.manual + ' · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）</span>' +
+        '<div class="th-sub muted"><span class="th-sub-txt" title="自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 ' + (s.manual > 0 ? '+' : '') + s.manual + ' · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）' + (s.skipped.length ? ' · 未参评：' + esc(s.skipped.join('、')) : '') + '">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）</span>' +
+        (s.skipped.length ? '<span class="stale-tip" title="未参评：' + esc(s.skipped.join('、')) + '">' + s.skipped.length + '项未参评</span>' : '') +
         '<span class="th-adj">' +
           '<button class="icon-btn" title="人工下调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="-5">−</button>' +
           '<button class="icon-btn" title="人工上调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="5">＋</button>' +
@@ -511,6 +662,34 @@
     return h + '</div>';
   }
 
+  /* ===== 温度计依据（Regime 卡片的数据支撑） =====
+   * 展示分数由哪些指标、以什么方向投出，以及未参评项及原因，
+   * 避免只看到一个 0/100 的极端分数却不知道依据。
+   */
+  function scoreReliability(s){
+    if(s.n === 0) return '⚠ 无有效参评数据：请补齐数据或更新滞后指标，此温度计暂不可用';
+    if(s.n < 3) return '⚠ 仅 ' + s.n + ' 项参评，样本过少，分数与结论仅供参考';
+    if(s.n < 5) return '提示：仅 ' + s.n + ' 项参评，样本偏少';
+    if(s.good === 0 || s.bad === 0) return '提示：参评指标全部同向，分数达边界（' + (s.good ? '全好' : '全坏') + '），注意样本代表性';
+    return '';
+  }
+  function scoreBasisHtml(key, name){
+    const s = calcScore(key);
+    const items = s.contrib.map(c =>
+      '<span class="qb-item ' + (c.isGood ? 'qb-good' : 'qb-bad') + '" title="' +
+      (c.isGood ? '方向有利' : '方向不利') + '">' + esc(c.name) + ' ' +
+      (c.delta > 0 ? '+' : '') + c.delta.toFixed(2) + '</span>').join('');
+    const rel = scoreReliability(s);
+    return '<div class="qb">' +
+      '<div class="qb-line"><b>' + esc(name) + ' ' + (s.final == null ? '—' : s.final) + '</b>' +
+      '<span class="qb-sub">参评 ' + s.n + ' 项（好' + s.good + ' / 坏' + s.bad + '）' +
+      (s.manual ? ' · 人工修正 ' + (s.manual > 0 ? '+' : '') + s.manual : '') + '</span></div>' +
+      '<div class="qb-items">' + (items || '<span class="muted" style="font-size:11px">无有效参评指标</span>') + '</div>' +
+      (s.skipped.length ? '<div class="qb-skip">未参评 ' + s.skipped.length + ' 项：' + esc(s.skipped.slice(0, 8).join('、')) + (s.skipped.length > 8 ? ' 等' : '') + '</div>' : '') +
+      (rel ? '<div class="qb-warn">' + esc(rel) + '</div>' : '') +
+      '</div>';
+  }
+
   /* ===== Regime 四象限：盈利(Growth) × 估值(Valuation) ===== */
   function regimeQuad(){
     const g = calcScore('growth'), v = calcScore('valuation');
@@ -524,18 +703,23 @@
     const cell = (id, t, s) => '<div class="quad-cell' + (cur===id ? ' quad-cur' : '') + '"><b>' + t + '</b><span>' + s + '</span></div>';
     return '<div class="card macro-quad"><div class="sec-title" style="margin-bottom:8px">' +
       '<h2>🧭 A股 Regime <span class="muted" style="font-weight:400;font-size:12px">经济 ' + g.final + ' × 估值 ' + v.final + '（以 50 为界）</span></h2></div>' +
-      '<div class="quad-grid">' +
-      cell('q-lt','盈利↑ 估值↓','结构性行情') +
-      cell('q-rb','盈利↑ 估值↑','🟢 最强牛市') +
-      cell('q-rt','盈利↓ 估值↓','🔴 最危险') +
-      cell('q-lb','盈利↓ 估值↑','流动性牛市') +
-      '</div><div class="quad-verdict">' + esc(warn) + '</div></div>';
+      '<div class="regime-layout">' +
+        '<div class="quad-grid">' +
+        cell('q-lt','盈利↑ 估值↓','结构性行情') +
+        cell('q-rb','盈利↑ 估值↑','🟢 最强牛市') +
+        cell('q-rt','盈利↓ 估值↓','🔴 最危险') +
+        cell('q-lb','盈利↓ 估值↑','流动性牛市') +
+        '</div>' +
+        '<div class="qb-grid">' + scoreBasisHtml('growth', '经济') + scoreBasisHtml('valuation', '估值') + '</div>' +
+      '</div>' +
+      '<div class="quad-verdict">' + esc(warn) + '</div></div>';
   }
 
   /* ===== 变化速度预警 ===== */
   function speedWarn(i){
     const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
     if(pts.length < 2) return '';
+    if(!freshnessOk(i)) return '';   // 数据滞后时不发预警，避免用陈旧变化报警
     const l2 = latest2(i);
     const out = [];
     // 汇率：近5期内变化超 ±1.5%（USDCNY 上涨 = 人民币贬值）
@@ -575,13 +759,13 @@
     // 判断某行当前是否处于"受益"状态
     const active = r => {
       const i = ind(r.key);
-      if(!i) return false;
+      if(!i || isDemoOnly(i) || !freshnessOk(i)) return false;   // 示例数据/数据滞后：不高亮，避免误导
       const l2 = latest2(i);
       if(l2.delta == null || isNaN(l2.delta) || l2.delta === 0) return false;
       return r.dir === 1 ? l2.delta > 0 : l2.delta < 0;
     };
     let h = '<div class="card macro-rot"><div class="sec-title" style="margin-bottom:8px">' +
-      '<h2>🔄 宏观 → 行业轮动映射 <span class="muted" style="font-weight:400;font-size:12px">高亮 = 该方向当前成立（按最新环比）</span></h2></div>' +
+      '<h2>🔄 宏观 → 行业轮动映射 <span class="muted" style="font-weight:400;font-size:12px">高亮 = 该方向当前成立（按最新环比；数据滞后的指标不参与）</span></h2></div>' +
       '<div class="wide-table-wrap"><table class="val-table"><thead><tr><th>宏观方向</th><th>受益行业</th></tr></thead><tbody>';
     ROTATION.forEach(r => {
       const on = active(r);
@@ -605,11 +789,16 @@
       const l2 = latest2(i);
       const cls = l2.delta > 0 ? 'up' : (l2.delta < 0 ? 'down' : '');
       const arrow = l2.delta > 0 ? '↑' : (l2.delta < 0 ? '↓' : '—');
-      h += '<div class="daily-item" title="' + esc(i.interpret || i.desc || '') + '">' +
+      const chg = i.freq === '日度' ? dailyChangeHtml(i, l2) : '';
+      const st = staleness(i);
+      const demo = isDemoOnly(i);
+      const stale = !demo && st != null && st > (FRESH_DAYS[i.freq] || 45);
+      const warn = demo ? '（⚠ 仍为内置示例数据，变化量仅供参考）' : (stale ? '（⚠ 数据滞后 ' + st + ' 天，变化量仅供参考）' : '');
+      h += '<div class="daily-item' + ((stale || demo) ? ' is-stale' : '') + '" title="' + esc(i.interpret || i.desc || '') + warn + '">' +
         '<div class="d-name">' + esc(i.name) + '</div>' +
         '<div class="d-val ' + cls + '">' + (l2.latest != null ? Number(l2.latest).toFixed(2) : '—') +
-        '<small>' + esc(i.unit || '') + ' ' + arrow + '</small></div>' +
-        '<div class="d-date muted">' + esc(l2.date || '') + '</div></div>';
+        '<small>' + esc(i.unit || '') + (chg ? '' : ' ' + arrow) + '</small></div>' +
+        '<div class="d-date muted">' + esc(l2.date || '') + chg + '</div></div>';
     });
     h += '</div>';
     // FedWatch 概率摘要（下一次会议）
@@ -761,12 +950,16 @@
     const cell = (id, t, s) => '<div class="quad-cell' + (cur===id ? ' quad-cur' : '') + '"><b>' + t + '</b><span>' + s + '</span></div>';
     return '<div class="card macro-quad macro-regime"><div class="sec-title" style="margin-bottom:8px">' +
       '<h2>🧭 宏观 Regime <span class="muted" style="font-weight:400;font-size:12px">流动性 ' + l.final + ' × 经济 ' + g.final + '（以 50 为界）</span></h2></div>' +
-      '<div class="quad-grid">' +
-      cell('r2','流动性宽松 · 经济弱','宽松交易 / 成长占优') +
-      cell('r1','流动性宽松 · 经济强','🟢 宽松复苏') +
-      cell('r4','流动性紧缩 · 经济弱','🔴 紧缩衰退') +
-      cell('r3','流动性紧缩 · 经济强','价值/周期占优') +
-      '</div><div class="quad-verdict">' + esc(warn) + '</div></div>';
+      '<div class="regime-layout">' +
+        '<div class="quad-grid">' +
+        cell('r2','流动性宽松 · 经济弱','宽松交易 / 成长占优') +
+        cell('r1','流动性宽松 · 经济强','🟢 宽松复苏') +
+        cell('r4','流动性紧缩 · 经济弱','🔴 紧缩衰退') +
+        cell('r3','流动性紧缩 · 经济强','价值/周期占优') +
+        '</div>' +
+        '<div class="qb-grid">' + scoreBasisHtml('liquidity', '流动性') + scoreBasisHtml('growth', '经济') + '</div>' +
+      '</div>' +
+      '<div class="quad-verdict">' + esc(warn) + '</div></div>';
   }
 
   // M1 − M2 剪刀差（建议§14）：资金活化程度观测
@@ -803,6 +996,7 @@
     const gs = groups() || [];
     let h = header('🌐 宏观雷达', '传导链：海外利率/美元 → 全球流动性 → 人民币 → 中国货币 → 信用 → 经济 → 盈利 → A股估值',
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn ghost sm" data-action="macro.syncCsv" title="从仓库 data/macro/宏观经济_全部数据.csv 拉取最新数据并增量合并（需通过 http(s) 打开页面）">🔄 同步最新数据</button>' +
       '<button class="btn ghost sm" data-action="macro.exportAll" title="导出全部宏观经济数据为一个 CSV">⬇ 导出全部</button>' +
       '<button class="btn ghost sm" data-action="macro.importAll" title="导入宏观经济数据 CSV（含全部指标）">⬆ 导入全部</button>' +
       '<button class="btn primary" style="background:var(--indigo)" data-action="macro.add">＋ 添加指标</button>' +
@@ -1276,6 +1470,24 @@
           reader.readAsText(file, 'utf-8');
         };
         input.click();
+      },
+      // ---- 一键同步：直接从仓库 CSV 拉取并增量合并，免去手动选择文件 ----
+      'macro.syncCsv': () => {
+        const url = 'data/macro/宏观经济_全部数据.csv';
+        toast('正在同步仓库最新宏观数据…');
+        fetch(url, { cache: 'no-store' })
+          .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .then(text => {
+            const r = csvToAllGroups(parseCsvSimple(text));
+            save(); render();
+            toast('同步完成：' + (r.tables||0) + ' 张表，新增 ' + r.created + ' 个指标，更新 ' + r.updated +
+              ' 个指标，写入 ' + r.points + ' 条数据');
+          })
+          .catch(e => {
+            alert('同步失败：' + e.message + '\n\n' +
+              '请确认通过 http(s) 方式打开页面（file:// 无法读取数据文件）；\n' +
+              '也可改用「⬆ 导入全部」手动选择 data/macro/宏观经济_全部数据.csv。');
+          });
       },
     },
     forms: {

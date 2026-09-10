@@ -168,7 +168,7 @@ py fetch_prices.py --dry-run
 
 ### 2. 宏观数据（宏观模块）→ `data/macro/`
 
-**统一脚本（推荐，含全部 23 个指标，支持增量）**：
+**统一脚本（推荐，含全部 42 个指标，支持增量）**：
 
 ```bash
 py fetch_macro_all.py                 # 增量：保留已有数据，只补充新日期（默认）
@@ -177,18 +177,27 @@ py fetch_macro_all.py --only global   # 只抓国际宏观（可选）
 py fetch_macro_all.py --outdir ../data/macro
 ```
 
-生成：`data/macro/宏观经济_全部数据.csv`（含「国内宏观经济」+「国际宏观经济」两张表，23 个指标）
+生成：`data/macro/宏观经济_全部数据.csv`（含「国内宏观经济」+「国际宏观经济」两张表，42 个指标）
 
-**每日增量脚本（推荐每日跑）**：只更新日度/周度指标，且只补 CSV 中缺失的日期，请求量与耗时就小：
+**每日增量脚本（推荐每日跑）**：每次执行自动补齐各指标缺失的日期（含当天/近期缺口），增量写回 CSV，已有日期不重复落盘：
 
 ```bash
-py fetch_daily.py                # 日度+周度，只补缺失日期（默认）
-py fetch_daily.py --freq 日度    # 只更日度
-py fetch_daily.py --force        # 忽略已有日期全部重抓（覆盖同日值）
+py fetch_daily.py                      # 日度+周度，自动补齐缺失日期（默认）
+py fetch_daily.py --freq 日度          # 只更日度
+py fetch_daily.py --freq all           # 不限频率（月度指标也补缺）
+py fetch_daily.py --only us10y,oil     # 只补指定指标（key 逗号分隔，不受 --freq 限制）
+py fetch_daily.py --force              # 忽略已有日期，全部重抓并覆盖同日值
+py fetch_daily.py --outdir D:\data\macro
 ```
 
-- 月度指标（GDP/CPI/PMI/LPR/M1/M2 等）不在其范围，仍由 `fetch_macro_all.py` 周/月跑一次维护。
-- 已配置 GitHub Actions 每日任务（`.github/workflows/macro-data.yml`），也可用 Windows 计划任务（脚本头部注释有 `schtasks` 示例）。
+执行流程：
+1. 读取现有 CSV → 逐指标抓取 → **只写入 CSV 中不存在的日期**（无新增则完全不写盘）；
+2. **每个指标一旦有新数据立即落盘**，中途中断/超时也不会丢失本次已抓内容；
+3. 日志明确列出补齐的日期（如 `补 1 期：2026-09-10`）或 `已是最新（最新 2026-09-10）`；
+4. 结束时输出**数据新鲜度报告**，列出仍未更新到位的指标与滞后天数（日度>7天 / 周度>21天 / 月度>45天 / 季度>120天），便于第一时间发现数据源失效。
+
+- 月度指标（GDP/CPI/PMI/LPR/M1/M2 等）默认不在其范围，仍由 `fetch_macro_all.py` 周/月跑一次维护；临时要补可加 `--freq all` 或 `--only <key>`。
+- 已配置 GitHub Actions 每日任务（`.github/workflows/macro-data.yml`：工作日先跑本脚本补日度/周度，周一额外跑 `fetch_macro_all.py` 补月度）；也可用 Windows 计划任务（脚本头部注释有 `schtasks` 示例）。
 - 日志：控制台 + `data/macro/fetch_daily.log`（1MB 滚动、保留 3 份），单指标 600s 看门狗防数据源挂死。
 
 **单独脚本**：
@@ -243,7 +252,8 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 1. **财务数据**：公司估值 → 该公司详情 → 「财务数据」→ 「⬆ 导入 CSV」→ 选 `data/financial/{ticker}_{名}.csv`；或「⬆ 批量导入财务」多选批量导入
 2. **行情快照**：公司估值 → 「⬆ 导入股价」→ 选 `data/prices/当前股价_YYYYMMDD.csv`（批量更新现价/总股本，并显示涨跌/市盈率等行情快照）
 3. **财报跟踪**：财报跟踪 → 「⬆ 导入财报 CSV」→ 可多选 `data/earnings/` 下的多个 CSV（不同日期/类别分别导入分析）
-4. **宏观数据**：宏观经济 → 顶部「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
+4. **宏观数据**：宏观经济 → 顶部「🔄 同步最新数据」→ 直接读取仓库 `data/macro/宏观经济_全部数据.csv` 并增量合并（需通过 http(s) 打开页面，离线时用下面的方式）
+   - 手动导入：「⬆ 导入全部」→ 选 `data/macro/宏观经济_全部数据.csv`（一次性导入国内+国际两张表）
    - 导出：「⬇ 导出全部」→ `宏观经济_全部数据.csv`
 5. **盈利预测**：公司估值 → 「⬆ 批量导入预测」多选 `data/forecast/` 下全部 CSV（按代码/名称自动匹配公司）；单家公司也可在详情 → 「📈 盈利预测」→「⬆ 导入预测」导入
    - 导出：详情页「⬇ 导出预测」
@@ -302,9 +312,11 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 
 ### 宏观（东财 + akshare）
 
-- 东财：GDP/CPI/PPI/PMI（及分产业、定基等）
-- akshare：LPR、M2、政府债务（国内）；美国 GDP/CPI/利率/非农/失业率/10Y国债、欧元区 CPI/GDP（国际）
-- 统一脚本 `fetch_macro_all.py` 已合并两者为 `宏观经济_全部数据.csv`
+- 东财：GDP/CPI/PPI/PMI（及分产业、定基等）、海关进出口（`RPT_ECONOMY_CUSTOMS` → 出口同比）、两融余额、货币供应兜底
+- akshare：LPR、M2、DR007（`repo_rate_query` 的 FR007 定盘利率，公开可得替代）、工业增加值（`gyzjz`）、社零（`consumer_goods_retail`）、固投（`gdzctz`）、出口兜底（`hgjck`）；美国 GDP/CPI/利率/非农/失业率/美债、欧元区 CPI/GDP（国际）
+- 补充参考指标（akshare）：全社会用电量（`society_electricity`，经济晴雨表）、新增人民币贷款（`new_financial_credit`，信用扩张）、财政收入（`czsr`，财政发力）、企业景气指数（`enterprise_boom_index`，季度）、大宗商品价格指数（`commodity_price_index`，日度、PPI 领先）
+- 统一脚本 `fetch_macro_all.py` 已合并两者为 `宏观经济_全部数据.csv`（42 个指标），`fetch_daily.py` 自动复用其指标清单
+- 仍无稳定自动源、需每月手动录入：社融存量同比、核心 CPI、PMI 新订单、工业企业利润、商品房销售面积、企业/居民中长期贷款、政府债券融资、城镇调查失业率、ETF 资金流（脚本结束时会打印提醒）
 
 > 想加宏观指标：在对应脚本的 `INDICATORS` 列表加一项即可。
 > akshare 接口「今值/现值」最新一期常为 nan（未发布），脚本自动用「前值」兜底。

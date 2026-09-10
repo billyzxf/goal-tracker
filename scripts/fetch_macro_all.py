@@ -31,8 +31,10 @@ r"""
      schtasks /create /tn "GoalTracker宏观" /tr "py d:\WPSSyncdisk\goal-tracker\scripts\fetch_macro_all.py" /sc weekly /d MON,TUE,WED,THU,FRI /st 15:30
 
 无稳定自动源、需每月手动录入的指标（脚本结束时也会打印）：
-  社融存量同比/核心CPI/PMI新订单/工业增加值/社零/固投/工业企业利润/地产销售/DR007/ETF资金流
+  社融存量同比/核心CPI/PMI新订单/工业企业利润/地产销售/ETF资金流
   （国家统计局/央行发布，月度频率，手动录入成本很低）
+已自动化的原手动指标：工业增加值(akshare gyzjz)、社零(akshare retail)、
+  固投(akshare gdzctz)、出口同比(东财 CUSTOMS / akshare hgjck)、DR007(repo_rate_hist FDR007)
 
 依赖：requests、akshare、pandas（akshare 缺失时仅跳过 ak 源，其余源照常工作）
 """
@@ -164,6 +166,15 @@ INDICATORS = [
             val_col='货币和准货币(M2)-同比增长', date_kind='month'),
        dict(type='em_dc', report='RPT_ECONOMY_MONEY_SUPPLY',
             field_candidates=['M2_SAME', 'M2_YOY'], date_field='TIME')]),
+    I('newcredit', '新增人民币贷款同比', '%', '月度', '货币与金融',
+      '信用扩张的流量观测：新增贷款同比回升=实体融资需求改善（存量看社融，目前需手动录入）。',
+      [dict(type='ak', fn='macro_china_new_financial_credit', date_col='月份',
+            val_col='当月-同比增长', date_kind='month')]),
+    I('dr007', '银行间 7 天回购利率', '%', '日度', '货币与金融',
+      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。'
+      '数据取 FR007 回购定盘利率（与 DR007 高度同步，作为公开可得替代）。',
+      [dict(type='ak', fn='repo_rate_query', date_col='date', val_col='FR007', date_kind='day'),
+       dict(type='ak', fn='macro_china_shibor_all', date_col='日期', val_col='1W-定价', date_kind='day')]),
 
     # ============ 中国经济周期 / 价格（表：国内宏观经济） ============
     I('gdp', 'GDP 同比增速', '%', '季度', '国内经济',
@@ -172,12 +183,43 @@ INDICATORS = [
     I('pmi', '制造业 PMI', '', '月度', '国内经济',
       '荣枯线50，比GDP快的领先指标。重点拆新订单（需求）而非只看headline。',
       [dict(type='eastmoney', report='RPT_ECONOMY_PMI', field='MAKE_INDEX', date='month')]),
+    I('indval', '工业增加值同比', '%', '月度', '国内经济',
+      'A股=制造业+科技高权重市场，工业周期直接影响盈利。',
+      [dict(type='ak', fn='macro_china_gyzjz', date_col='月份', val_col='同比增长', date_kind='month')]),
+    I('retail', '社会消费品零售同比', '%', '月度', '国内经济',
+      '内需消费动能：社零同比回升=居民消费意愿改善。',
+      [dict(type='ak', fn='macro_china_consumer_goods_retail', date_col='月份', val_col='同比增长',
+            date_kind='month')]),
+    I('fixedasset', '固定资产投资同比', '%', '月度', '国内经济',
+      '基建/制造业/地产三条线合计，财政发力与产业周期的综合映射。',
+      [dict(type='ak', fn='macro_china_gdzctz', date_col='月份', val_col='同比增长', date_kind='month')]),
+    I('exports', '出口同比', '%', '月度', '国内经济',
+      '外需是中国宏观周期重要支撑。重点看"超预期/低于预期"而非绝对值。',
+      [dict(type='em_dc', report='RPT_ECONOMY_CUSTOMS', field_candidates=['EXIT_BASE_SAME'],
+            date_field='REPORT_DATE', date_kind='month', periods=200),
+       dict(type='ak', fn='macro_china_hgjck', date_col='月份', val_col='当月出口额-同比增长',
+            date_kind='month')]),
+    I('elec', '全社会用电量同比', '%', '月度', '国内经济',
+      '经济晴雨表：用电量比 GDP 更实时地反映工业生产与经济活动强度。',
+      [dict(type='ak', fn='macro_china_society_electricity', date_col='统计时间',
+            val_col='全社会用电量同比', date_kind='month')]),
+    I('czsr', '财政收入同比', '%', '月度', '国内经济',
+      '财政发力程度：收入改善配合支出扩张，对基建与总需求形成支撑。',
+      [dict(type='ak', fn='macro_china_czsr', date_col='月份', val_col='当月-同比增长', date_kind='month')]),
+    I('boom', '企业景气指数', '', '季度', '国内经济',
+      '央行调查的企业景气度（>100 为景气区间）：环比改善=企业预期回暖。',
+      [dict(type='ak', fn='macro_china_enterprise_boom_index', date_col='季度',
+            val_col='企业景气指数-指数', date_kind='quarter')]),
     I('cpi', 'CPI 同比', '%', '月度', '物价通胀',
       '居民物价。核心CPI（剔除食品能源）更值得长期跟踪。',
       [dict(type='eastmoney', report='RPT_ECONOMY_CPI', field='NATIONAL_SAME', date='month')]),
     I('ppi', 'PPI 同比', '%', '月度', '物价通胀',
       '工业品价格=企业利润先行指标。PPI↑利好周期资源，PPI持续为负警惕通缩。',
       [dict(type='eastmoney', report='RPT_ECONOMY_PPI', field='BASE_SAME', date='month')]),
+    I('commprice', '大宗商品价格指数', '', '日度', '物价通胀',
+      'PPI 的领先观测：大宗商品价格上行→工业企业成本与通胀预期变化；日度更新更及时。',
+      [dict(type='ak', fn='macro_china_commodity_price_index', date_col='日期',
+            val_col='最新值', date_kind='day')]),
 
     # ============ 市场自身（表：国内宏观经济，分类"市场"） ============
     I('turnover', 'A股成交额', '万亿', '日度', '市场',
@@ -206,9 +248,8 @@ INDICATORS = [
 ]
 
 # 无稳定自动源、需手动录入的 seed 指标（结束时打印提醒）
-MANUAL_KEYS = ['tsf', 'corecpi', 'pmi_new', 'indval', 'indprofit', 'fixedasset',
-               'retail', 'exports', 'prop_sale', 'unemp', 'dr007', 'etfflow',
-               'corploan', 'hhloan', 'govbond', 'cpi_mom']
+MANUAL_KEYS = ['tsf', 'corecpi', 'pmi_new', 'indprofit', 'prop_sale', 'unemp',
+               'etfflow', 'corploan', 'hhloan', 'govbond', 'cpi_mom']
 
 # 遗留指标（旧 CSV 有历史数据，保留导出）
 LEGACY_KEYS = {'gdp_first', 'gdp_second', 'gdp_third', 'nmpmi', 'cpi_mom',
@@ -250,14 +291,15 @@ def _http_get(url, params=None, headers=None, timeout=20, retries=3):
 
 
 def _tmpl(v):
-    """参数日期模板：{T} → 今天，{T-n} → n 天前（YYYYMMDD / YYYY-MM-DD 视目标而定，
-    统一给 YYYY-MM-DD，akshare 兼容两者）。"""
+    """参数日期模板：{T} → 今天，{T-n} → n 天前；加 C 后缀得紧凑格式 YYYYMMDD。
+    默认 YYYY-MM-DD（多数源兼容），需要 YYYYMMDD 的接口（如 repo_rate_hist）用 {T-nC}。"""
     s = str(v)
     today = datetime.now()
 
     def rep(m):
-        return (today - timedelta(days=int(m.group(1) or 0))).strftime('%Y-%m-%d')
-    return re.sub(r'\{T(?:-(\d+))?\}', rep, s)
+        d = today - timedelta(days=int(m.group(1) or 0))
+        return d.strftime('%Y%m%d') if m.group(2) else d.strftime('%Y-%m-%d')
+    return re.sub(r'\{T(?:-(\d+))?(C)?\}', rep, s)
 
 
 def fetch_eastmoney(cfg, periods=150):
@@ -563,7 +605,8 @@ def fetch_em_kline_sum(step):
 
 
 def fetch_em_dc(step):
-    """东财 datacenter 通用报表（两融余额等）：report + field_candidates + date_field"""
+    """东财 datacenter 通用报表（两融余额等）：report + field_candidates + date_field。
+    date_kind 可选 day|month|quarter（默认 day），决定写入 CSV 的日期粒度。"""
     dc = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
     params = {'reportName': step['report'], 'columns': 'ALL', 'pageNumber': 1,
               'pageSize': step.get('periods', 600), 'sortTypes': '-1',
@@ -571,9 +614,10 @@ def fetch_em_dc(step):
     rows = (_http_get(dc, params=params).json().get('result') or {}).get('data') or []
     factor = step.get('factor', 1.0)
     dfld = step['date_field']
+    dkind = step.get('date_kind', 'day')
     pts = []
     for row in rows:
-        d = parse_ak_date(str(row.get(dfld, ''))[:10], 'day')
+        d = parse_ak_date(str(row.get(dfld, ''))[:10], dkind)
         if not d or '-' not in d:
             continue
         for f in step['field_candidates']:
@@ -642,13 +686,19 @@ def parse_ak_date(raw, kind):
     if hasattr(raw, 'strftime'):
         s = raw.strftime('%Y-%m-%d')
     if kind == 'quarter':
+        # 支持 '2026年第2季度' / '2026Q2' / '2026-06-30'
+        m = re.match(r'^(\d{4})年?第?([1-4])季度?$', s)
+        if m:
+            return '%sQ%s' % (m.group(1), m.group(2))
         m = re.match(r'^(\d{4})-(\d{1,2})-', s) or re.match(r'^(\d{4})', s)
         if m:
             y = int(m.group(1)); mo = int(m.group(2)) if len(m.groups()) > 1 and m.group(2) else 1
             return '%dQ%d' % (y, (mo - 1) // 3 + 1)
         return s
     if kind == 'month':
-        m = re.match(r'^(\d{4})-(\d{1,2})$', s) or re.match(r'^(\d{4})-(\d{1,2})-', s) or re.match(r'^(\d{4})年(\d{1,2})', s)
+        # 支持 '2026-07' / '2026年07月份' / '2026.7'（统计局接口常用点号）
+        m = (re.match(r'^(\d{4})-(\d{1,2})$', s) or re.match(r'^(\d{4})-(\d{1,2})-', s)
+             or re.match(r'^(\d{4})年(\d{1,2})', s) or re.match(r'^(\d{4})\.(\d{1,2})$', s))
         if m:
             return '%s-%02d' % (m.group(1), int(m.group(2)))
         return s
