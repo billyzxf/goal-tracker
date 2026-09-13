@@ -304,6 +304,140 @@ function refreshBackupReminder(){
   }
 }
 
+/* ================= 同步盘数据检测（goal-tracker-data.json） =================
+ * 背景：数据主存是浏览器 IndexedDB，磁盘上的 JSON 只在两种情况下被读入——
+ *   ① 本机 IndexedDB 为空（首次使用 / 换设备）；② 用户手动「⬆ 导入数据」。
+ * 于是「别处导出了更新版本到同步盘」这种情况，本机不会自动感知。
+ *
+ * 这里在首屏渲染完成后做一次静默比对，判断依据是 JSON 内部的 meta.updated（不是文件时间）：
+ *   · HEAD 先探 Last-Modified：已不可能更新时连下载都省掉（JSON 有几 MB）；
+ *   · 只有真正更新时才浮出提示条，由用户决定是否加载；
+ *   · 绝不自动覆盖——自动覆盖会丢掉本机尚未导出的改动；
+ *   · 忽略过某一版后，该版本不再打扰（按远端 meta.updated 记名）。
+ */
+const REMOTE_PATHS = ['./goal-tracker-data.json', './data/goal-tracker-data.json'];
+const REMOTE_DISMISS_KEY = 'goalTracker.remoteDismissed';
+const REMOTE_CHECK_KEY = 'goalTracker.remoteCheckedAt';
+const REMOTE_MIN_GAP_MS = 30000;            // 远端需比本机新 30s 以上才算「有更新」（刚导出时两边几乎同时）
+const REMOTE_RECHECK_MS = 20 * 60 * 1000;   // 同一浏览器 20 分钟内不重复自动比对
+
+let remoteCandidate = null; // { path, data, updated, count, localCount, localUpdated }
+
+function remoteTs(db){
+  const t = db && db.meta && db.meta.updated;
+  const v = t ? Date.parse(t) : NaN;
+  return isNaN(v) ? 0 : v;
+}
+function dataItemCount(db){
+  // 粗略条目数：各模块下的数组长度合计。仅用于让用户直观比较「哪边数据更多」，
+  // 不参与任何判定（判定只看 meta.updated）。
+  let n = 0;
+  (MODULE_ORDER || []).forEach(m => {
+    const d = db && db[m.view];
+    if(!d) return;
+    if(Array.isArray(d)) n += d.length;
+    else if(typeof d === 'object') Object.keys(d).forEach(k => { if(Array.isArray(d[k])) n += d[k].length; });
+  });
+  return n;
+}
+function fmtRemoteTime(ms){
+  if(!ms) return '无时间戳';
+  const d = new Date(ms);
+  return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+async function probeRemote(path){
+  // 只取响应头，不下载正文：拿 Last-Modified 做「值不值得下载」的粗判
+  try{
+    const resp = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+    if(!resp || !resp.ok) return null;
+    const lm = Date.parse(resp.headers.get('last-modified') || '');
+    const len = parseInt(resp.headers.get('content-length') || '', 10);
+    return { path, lm: isNaN(lm) ? 0 : lm, size: isNaN(len) ? 0 : len };
+  }catch(e){ return null; }
+}
+async function fetchRemoteData(path){
+  try{
+    const resp = await fetch(path + '?t=' + Date.now(), { cache: 'no-store' });
+    if(!resp || !resp.ok) return null;
+    const d = await resp.json();
+    return hasRequiredModules(d) ? d : null;
+  }catch(e){ return null; }
+}
+async function checkRemoteData(manual){
+  if(!appReady || !DB) return;
+  if(!manual){
+    const last = parseInt(localStorage.getItem(REMOTE_CHECK_KEY) || '0', 10) || 0;
+    if(Date.now() - last < REMOTE_RECHECK_MS) return;
+  }
+  try { localStorage.setItem(REMOTE_CHECK_KEY, String(Date.now())); } catch(e){}
+
+  // ① HEAD 探测候选文件（file:// 打开时 fetch 直接失败，下面会静默退出）
+  const probed = [];
+  for(const p of REMOTE_PATHS){
+    const r = await probeRemote(p);
+    if(r) probed.push(r);
+  }
+  const localTs = remoteTs(DB);
+  // 已知修改时间的按新→旧排序；时间未知的排最后（仍给手动检查一次机会）
+  let queue = (probed.length ? probed.slice() : [{ path: REMOTE_PATHS[0], lm: 0 }])
+    .sort((a, b) => (b.lm || 0) - (a.lm || 0));
+  if(!manual){
+    // 自动模式：只在有更新迹象（或完全探不到时间）时下载，且最多下载一个候选
+    queue = queue.filter(c => !c.lm || c.lm - localTs > REMOTE_MIN_GAP_MS).slice(0, 1);
+  }
+
+  // ② 按序下载并比对 JSON 内部的 meta.updated（唯一可信依据）
+  let found = null, tried = [];
+  for(const cand of queue){
+    tried.push(cand.path);
+    const d = await fetchRemoteData(cand.path);
+    if(!d) continue;
+    const rTs = remoteTs(d);
+    found = { path: cand.path, data: d, updated: rTs };
+    if(rTs - localTs > REMOTE_MIN_GAP_MS) break;  // 找到更新的即可停止
+    if(!manual || tried.length >= 2) break;
+  }
+
+  if(!found){
+    remoteCandidate = null; renderRemoteBar();
+    if(manual) toast('同步盘没有可用的 goal-tracker-data.json（文件不存在 / 格式不符 / 直接用 file:// 打开页面）');
+    return;
+  }
+  if(found.updated - localTs <= REMOTE_MIN_GAP_MS){
+    remoteCandidate = null; renderRemoteBar();
+    if(manual) toast('✅ 本机数据不比同步盘旧（同步盘：' + fmtRemoteTime(found.updated) + '）');
+    return;
+  }
+  if(!manual && String(found.updated) === (localStorage.getItem(REMOTE_DISMISS_KEY) || '')){
+    return; // 这一版已被忽略，安静跳过
+  }
+  remoteCandidate = {
+    path: found.path, data: found.data, updated: found.updated,
+    count: dataItemCount(found.data), localCount: dataItemCount(DB), localUpdated: localTs,
+  };
+  renderRemoteBar();
+  if(manual) toast('发现同步盘有更新的数据');
+}
+function renderRemoteBar(){
+  const bar = document.getElementById('remote-bar');
+  if(!bar) return;
+  const r = remoteCandidate;
+  if(!r){ bar.hidden = true; bar.innerHTML = ''; return; }
+  const diff = r.count - r.localCount;
+  const diffTxt = diff > 0 ? '多 ' + diff + ' 条' : (diff < 0 ? '少 ' + (-diff) + ' 条' : '条数相同');
+  bar.innerHTML =
+    '<div class="rb-head"><b>🔄 同步盘有更新的数据</b>' +
+    '<button class="icon-btn" data-action="data.remoteDismiss" title="本次忽略（该版本不再提示）">✕</button></div>' +
+    '<div class="rb-row"><span>同步盘</span><b>' + esc(fmtRemoteTime(r.updated)) + '</b>' +
+    '<span class="muted">' + r.count + ' 条 · ' + esc(String(r.path).replace('./', '')) + '</span></div>' +
+    '<div class="rb-row"><span>本机</span><b>' + esc(fmtRemoteTime(r.localUpdated)) + '</b>' +
+    '<span class="muted">' + r.localCount + ' 条（' + diffTxt + '）</span></div>' +
+    '<div class="rb-note">加载会用同步盘覆盖本机数据，本机尚未导出的改动会丢失——建议先导出本机备份。</div>' +
+    '<div class="rb-foot"><button class="btn ghost sm" data-action="data.remoteBackup">先导出本机备份</button>' +
+    '<button class="btn primary sm" data-action="data.remoteLoad">加载同步盘数据</button></div>';
+  bar.hidden = false;
+}
+
 /* ================= 全局状态 =================
  * 约定：模块的状态键使用「模块前缀.子键」命名（如 job.tag），避免键名冲突。
  */
@@ -403,6 +537,31 @@ Object.assign(ACTIONS, {
     markExported();
   },
   'data.import': () => $('#import-file').click(),
+  // 手动比对同步盘（自动比对受 20 分钟节流，且只在启动时跑一次；这里随时可用）
+  'data.remoteCheck': () => checkRemoteData(true),
+  'data.remoteDismiss': () => {
+    if(remoteCandidate){
+      // 记住远端版本号：同一版本不再自动提示（换设备或再次导出后版本变化，会重新提示）
+      try { localStorage.setItem(REMOTE_DISMISS_KEY, String(remoteCandidate.updated)); } catch(e){}
+    }
+    remoteCandidate = null; renderRemoteBar();
+  },
+  'data.remoteBackup': () => ACTIONS['data.export'](),
+  'data.remoteLoad': async () => {
+    const r = remoteCandidate; if(!r) return;
+    if(!confirm('用同步盘的数据覆盖本机？\n\n' +
+      '同步盘：' + fmtRemoteTime(r.updated) + '（' + r.count + ' 条）\n' +
+      '本机：'   + fmtRemoteTime(r.localUpdated) + '（' + r.localCount + ' 条）\n\n' +
+      '本机尚未导出的改动会丢失，且无法撤销。确定继续？')) return;
+    DB = ensure(r.data);
+    appReady = true;
+    try { await idbSet('data', DB); } catch(e){ console.error('IndexedDB 写入失败:', e); }
+    // 本机已与磁盘对齐，重置导出提醒时间（否则刚加载完就被提示「久未导出」）
+    try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch(e){}
+    remoteCandidate = null;
+    renderRemoteBar(); render(); updateSyncUI();
+    toast('✅ 已加载同步盘数据（' + r.count + ' 条）');
+  },
 });
 
 /* ================= hash 路由 =================
@@ -571,6 +730,8 @@ async function initApp(){
   renderNav();
   render();
   updateSyncUI();
+  // 首屏渲染后再静默比对同步盘 JSON（不阻塞启动；失败一律静默）
+  setTimeout(() => { checkRemoteData(false); }, 800);
 }
 
 /* 暴露给模块 / 外部 */

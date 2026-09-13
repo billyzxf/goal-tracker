@@ -6,7 +6,7 @@
  *   - 数据文件（JSON/CSV）→ 网络优先，失败回退缓存（离线可用）
  * 版本号仅在需要清空全部缓存时才需要修改。
  */
-const CACHE = 'goal-tracker-v4';
+const CACHE = 'goal-tracker-v9';
 
 const CORE = [
   './',
@@ -63,7 +63,11 @@ self.addEventListener('fetch', function(e){
     e.respondWith(
       fetch(req).then(function(res){
         var copy = res.clone();
-        caches.open(CACHE).then(function(c){ c.put(req, copy); });
+        // 数据文件常带 ?t=时间戳 防缓存（loadAsync / 同步盘比对都会用）：
+        // 统一以「去掉查询串」的地址写入缓存，否则每次启动都会多存一份几 MB 的副本。
+        // 回退时用 ignoreSearch:true 匹配，仍能命中这份缓存。
+        var key = new Request(url.origin + url.pathname);
+        caches.open(CACHE).then(function(c){ c.put(key, copy); });
         return res;
       }).catch(function(){
         return caches.match(req, { ignoreSearch:true });

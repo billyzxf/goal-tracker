@@ -61,6 +61,24 @@ window.ValCore = (function(){
         const ev = (p.targetMultiple||0) * (p.baseValue||0);
         v = (ev - (p.netDebt||0)) / (p.shares||1); break;
       }
+      /* SOTP 分部估值（Sum of The Parts）：
+       * 估算每股价值 =（Σ 第 i 分部净利 × 第 i 分部 PE
+       *                + 持有上市股权市值 + 净现金 − 净债务）÷ 总股本
+       * 分部最多 4 个（seg1np/seg1pe ... seg4np/seg4pe），未填写的分部按 0 计。
+       * 适用：控股型 / 多元化公司（如「藏格矿业—巨龙铜业投资收益」「中科曙光—海光信息敞口」），
+       *       以及单一 PE 会严重失真的「主业 + 参股上市平台」结构。
+       * 与其它方法口径一致：净利/金额单位为「亿元」，返回「每股价值（元）」。
+       */
+      case 'SOTP': {
+        let sum = 0;
+        for(let i = 1; i <= 4; i++){
+          const np = +(p['seg' + i + 'np'] || 0);
+          const pe = +(p['seg' + i + 'pe'] || 0);
+          if(np) sum += np * pe;
+        }
+        sum += (+(p.listedHold || 0)) + (+(p.netCash || 0)) - (+(p.netDebt || 0));
+        v = sum / (p.shares || 1); break;
+      }
     }
     return Math.round(v * 100) / 100;
   }

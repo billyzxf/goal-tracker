@@ -353,6 +353,9 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .val-inline[type=number]{-moz-appearance:textfield}
 /* 估值记录行内参数编辑（按方法动态渲染，紧凑横排） */
 .val-param-inline{display:flex;gap:6px;flex-wrap:nowrap;align-items:center;white-space:nowrap}
+/* 参数较多的方法（如 SOTP 的 4 个分部 × 净利/PE）换行显示，避免把表格撑得过宽 */
+.val-param-inline.wrap{flex-wrap:wrap;white-space:normal;max-width:360px;row-gap:4px}
+.val-param-inline .vp-more{font-size:11px;font-weight:600;cursor:help;flex-basis:100%}
 .val-param-inline .vp-field{display:inline-flex;align-items:center;gap:3px}
 .val-param-inline .vp-tag{font-size:11px;color:var(--ink2);font-weight:600;background:var(--bg);padding:1px 5px;border-radius:4px;border:1px solid var(--line);letter-spacing:.2px}
 .val-param-inline .vp-stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:6px;background:var(--card);overflow:hidden;transition:border-color .15s}
@@ -364,6 +367,58 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .val-param-inline .vp-btn{border:0;background:transparent;cursor:pointer;padding:0 4px;font-size:8px;line-height:1;color:var(--ink2);user-select:none}
 .val-param-inline .vp-btn:hover{background:var(--bg);color:var(--indigo)}
 .val-param-inline .vp-btn:active{background:var(--indigo-bg)}
+
+/* ===== 估值矩阵 / 触发线（对齐《估值五步法》Step2→Step4） ===== */
+.vm-table th.num,.vm-table td.num{text-align:center;font-variant-numeric:tabular-nums}
+.vm-table tr.vm-mean td{background:var(--indigo-bg);border-top:2px solid var(--line)}
+.vm-table tr.vm-mean td:first-child{color:var(--ink2)}
+.vm-conclusion{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-size:13px}
+.vm-conclusion .vmc-item{color:var(--ink2)}
+.vm-conclusion .vmc-item b{color:var(--ink);font-variant-numeric:tabular-nums}
+.val-inline-sel{background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 6px;font-size:12px;color:var(--ink);cursor:pointer;transition:border-color .15s}
+.val-inline-sel:hover{border-color:var(--line)}
+.val-inline-sel:focus{background:var(--card);border-color:var(--indigo);outline:none}
+.trigger-wrap{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--card)}
+.trigger-table{margin-top:0}
+.trigger-table td{padding:8px 10px;white-space:normal}
+.trigger-table tr.trigger-hit td{background:var(--amber-bg)}
+.trigger-table tr.trigger-hit td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.trigger-gap{margin-top:10px;font-size:13px;color:var(--ink2)}
+.trigger-gap b{font-variant-numeric:tabular-nums}
+
+/* ===== 三级归档 · 决策要点 · 今日要处理（《估值五步法》决策闭环） ===== */
+/* —— ⚡ 今日要处理（投资版）：置顶面板 —— */
+.today-panel{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--indigo);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);margin-bottom:18px}
+.today-panel.is-clear{border-left-color:var(--green)}
+.tp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.tp-head h3{font-size:15px;font-weight:700}
+.tp-group + .tp-group{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.tp-label{font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:6px}
+.tp-label b{color:var(--ink);font-variant-numeric:tabular-nums}
+.tp-item{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px;flex-wrap:wrap}
+.tp-name{font-weight:600;min-width:82px}
+.tp-why{color:var(--ink2);flex:1;min-width:180px}
+.tp-why b{color:var(--ink);font-variant-numeric:tabular-nums}
+.tp-item .btn{flex:none}
+.tp-more{font-size:12px;padding-top:4px}
+
+/* —— ⚡ 决策要点（公司详情页置顶） —— */
+.dec-meta{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;color:var(--ink2);margin-bottom:12px}
+.dec-meta b{font-variant-numeric:tabular-nums}
+.invalid-box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card)}
+.invalid-box.is-broke{border-color:rgba(241,106,106,.55);background:#fff7f7}
+.invalid-box textarea{width:100%;box-sizing:border-box;font-size:16px;font-family:inherit;line-height:1.5;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--bg);color:var(--ink);resize:vertical}
+.invalid-box textarea:focus{outline:none;border-color:var(--indigo);background:var(--card)}
+.ib-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;margin-bottom:8px}
+.ib-head .badge{margin-left:auto}
+.ib-list{margin:10px 0 0;padding-left:20px;font-size:13px;color:var(--ink2);line-height:1.7}
+.ib-list li::marker{color:var(--red)}
+.ib-brief{margin-top:10px;font-size:13px;color:var(--ink2)}
+.ib-brief b{color:var(--ink)}
+.rep-box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card);margin-top:12px;font-size:13px}
+.rep-list{display:flex;flex-wrap:wrap;gap:8px}
+.report-md{max-height:64vh;overflow:auto;padding-right:4px}
+html.dark .invalid-box.is-broke{background:rgba(241,106,106,.09)}
 
 /* 财务指标模块 */
 .metric-priority{color:var(--amber);font-size:11px;letter-spacing:-1px;white-space:nowrap}
@@ -877,6 +932,11 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
   .swing-opt{display:none}
   .swing-arch{flex-direction:column}
 
+  /* 组合仓位：窄屏纵向堆叠，进度条整行 */
+  .pp-group{grid-template-columns:1fr;gap:5px}
+  .pp-g-num,.pp-g-dev{text-align:left}
+  .pp-base input{width:100%}
+
   /* 表单 / 参数行换行，避免横向溢出 */
   .param-grid .field{min-width:100%}
   .val-param-inline{flex-wrap:wrap}
@@ -885,6 +945,12 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
   .macro-value{font-size:26px}
   .add-form{flex-wrap:wrap}
   .quick-row{flex-wrap:wrap}
+
+  /* 今日要处理 / 决策要点：窄屏纵向堆叠，按钮整行可点 */
+  .tp-item{align-items:flex-start}
+  .tp-item .btn{width:100%;margin-top:2px}
+  .invalid-box textarea,.report-md{font-size:16px}
+  .report-md{max-height:56vh}
 
   /* 加大点击目标 */
   .nav-item{padding:12px 12px}
@@ -904,6 +970,28 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .cgrid{stroke:var(--ring-track)}
 .czero{stroke:var(--line)}
 .chart-pt{fill:var(--card)}
+
+/* ---------- 同步盘更新提示条（core.js · checkRemoteData） ----------
+ * 桌面：右上角浮层卡片（避开底部 toast / 估值多选条）；
+ * 手机：顶栏下方整宽卡片，按钮 ≥44px 点击区。
+ */
+.remote-bar{position:fixed;top:12px;right:16px;width:min(380px,calc(100vw - 24px));z-index:90;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;
+  box-shadow:0 12px 32px rgba(16,24,40,.18);font-size:12.5px;line-height:1.7}
+.remote-bar[hidden]{display:none}
+.rb-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.rb-head b{font-size:13px}
+.rb-row{display:flex;align-items:baseline;gap:8px;color:var(--ink2)}
+.rb-row>span:first-child{flex:none;width:42px;color:var(--ink2)}
+.rb-row>b{font-variant-numeric:tabular-nums;color:var(--ink);flex:none}
+.rb-row .muted{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb-note{margin-top:8px;padding:7px 9px;border-radius:9px;background:var(--amber-bg);color:var(--ink2);font-size:11.5px;line-height:1.65}
+.rb-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+@media (max-width:720px){
+  .remote-bar{top:60px;left:12px;right:12px;width:auto;padding:12px}
+  .rb-foot{justify-content:stretch}
+  .rb-foot .btn{flex:1;min-height:44px}
+}
 
 /* ---------- Toast 轻提示 ---------- */
 .toast-wrap{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:300;
@@ -926,6 +1014,7 @@ html.dark .badge.blue{background:rgba(37,99,235,.22);color:#8ab4f8}
 html.dark .badge.orange{background:rgba(234,88,12,.2);color:#fdba74}
 html.dark .badge.red{background:rgba(220,38,38,.22);color:#fca5a5}
 html.dark .m-ev{background:rgba(107,75,214,.2);color:#b3a1f3}
+html.dark .m-sotp{background:rgba(13,148,136,.2);color:#5eead4}
 html.dark .cat-每股指标{background:rgba(25,113,197,.2);color:#8ab4f8}
 html.dark .cat-市场{background:rgba(112,72,232,.2);color:#b3a1f3}
 html.dark .cat-分红{background:rgba(12,133,153,.2);color:#7dd3e0}
@@ -942,6 +1031,18 @@ html.dark .pr-star{color:#4b5563}
 html.dark .btn.danger-ghost{border-color:rgba(241,106,106,.4)}
 /* 深色下雪碧噪点类阴影过重，收敛卡片阴影 */
 html.dark .th-card:hover,html.dark .company-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.4)}
+
+/* ---------- 公司估值：横向排序条 / 排行榜视图 ---------- */
+.sort-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.sort-bar .sb-label{font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px}
+.sort-bar .sb-sep{margin:0 2px}
+.rank-table th.rk-sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.rank-table th.rk-sortable:hover{color:var(--indigo)}
+.rank-table tbody tr{cursor:pointer}
+.rank-table .rk-name{white-space:nowrap}
+.rank-table .rk-name-link{font-weight:700;color:var(--ink)}
+.rank-table tbody tr:hover .rk-name-link{color:var(--indigo);text-decoration:underline}
+.rank-table .rk-sub{font-size:11px;font-weight:400}
 
 /* ---------- 待击球系统（swing.js） ---------- */
 /* 仓位架构卡：三列并排 */
@@ -965,3 +1066,34 @@ html.dark .th-card:hover,html.dark .company-card:hover{box-shadow:0 4px 16px rgb
 .swing-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;font-size:13px}
 .swing-events{margin:6px 0 0;padding-left:18px;line-height:1.8;font-size:12.5px}
 .swing-events .muted{margin-right:4px}
+
+/* ---------- 组合仓位（目标达成度 + 单票超限预警） ---------- */
+.port-panel{margin:10px 0}
+.pp-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:10px}
+.pp-head h3{margin:0;font-size:15px}
+.pp-head .muted{font-size:12px}
+.pp-base{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:10px;margin-bottom:12px;font-size:12px;color:var(--ink2)}
+.pp-base label{font-weight:700;color:var(--ink2);white-space:nowrap}
+.pp-base input{width:150px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;
+  background:var(--card);font-size:13px;color:var(--ink)}
+.pp-base b{font-variant-numeric:tabular-nums}
+.pp-groups{display:flex;flex-direction:column;gap:9px;margin-bottom:14px}
+.pp-group{display:grid;grid-template-columns:190px minmax(80px,1fr) 132px 100px;align-items:center;gap:10px;font-size:13px}
+.pp-g-name{font-weight:700;white-space:nowrap}
+.pp-g-name .muted{font-weight:400;font-size:11px;margin-left:4px}
+.pp-bar{position:relative;height:9px;border-radius:6px;background:var(--bg2);overflow:hidden;border:1px solid var(--line)}
+.pp-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--indigo),#8b93ff);transition:width .25s}
+.pp-bar u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink2);opacity:.7}
+.pp-g-num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.pp-g-num .muted{font-size:11px}
+.pp-g-dev{text-align:right;font-size:12px;font-weight:700;white-space:nowrap}
+.pp-low{color:var(--amber)}
+.pp-high{color:var(--red)}
+.pp-ok{color:var(--green-dk)}
+.pp-table th,.pp-table td{white-space:nowrap}
+.pp-over-row td{background:rgba(224,82,82,.07)}
+.pp-warn{margin-top:12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(232,147,12,.35);
+  background:var(--amber-bg);color:var(--ink2);font-size:12.5px;line-height:1.9}
+.pp-warn b{color:var(--ink)}
+html.dark .pp-over-row td{background:rgba(241,106,106,.12)}

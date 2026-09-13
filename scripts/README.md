@@ -21,6 +21,10 @@
 | `fetch_macro.py` | 东财宏观指标（GDP/CPI/PPI/PMI 等） | `data/macro/` |
 | `fetch_macro_ak.py` | akshare 宏观指标（债务/货币/国际） | `data/macro/` |
 | `fetch_profit_forecast.py` | 东财 F10 盈利预测（券商明细+一致预期）→ CSV / 写入 JSON | `data/forecast/` |
+| `build_valuation_index.py` | 扫描估值报告，生成前端可读索引 | `valuations/_index.json` |
+| `export_companies.py` | 从数据 JSON 导出公司列表 CSV（供抓取脚本 --from-csv） | `data/公司列表.csv` |
+| `test_valuation.js` | 估值 / 待击球模块回归测试（node 直接跑，无需浏览器） | - |
+| `test_sync_check.js` | 内核「同步盘数据比对」回归测试（vm 加载 core.js） | - |
 | `requirements.txt` | Python 依赖清单 | - |
 
 ## 数据目录结构
@@ -247,6 +251,67 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 
 > 数据包含三部分：券商预测明细（每家券商 EPS/净利/分析师/评级）、一致预期（营收/净利/PE/ROE）、机构一致预期 EPS。
 
+### 4. 估值报告索引（公司估值 → 📄 估值报告）→ `valuations/_index.json`
+
+把 `valuations/` 下的 `.md` 估值报告登记成前端可读的索引，之后公司详情页「⚡ 决策要点 → 📄 估值报告」会按公司名自动列出报告（按日期倒序，天然形成报告历史），点一下即可在弹窗里阅读。
+
+```bash
+py scripts/build_valuation_index.py
+```
+
+- 文件名需为 `{公司名}_估值报告_{YYYYMMDD}.md`（如 `生益科技_估值报告_20260831.md`），不符合约定的文件自动跳过。
+- 说明文档/模板（`估值五步法_完整说明文档.md`、`估值报告生成SOP.md`、`_报告模板.md`）不进入索引。
+- **新增或重命名报告后要重跑一次本脚本**，再刷新工作台页面。
+- 页面需通过 http(s) / 本地服务器打开，直接双击 HTML（file://）无法读取报告文件。
+
+### 5. 回归测试（改完相关代码后跑一次）
+
+```bash
+node scripts/test_valuation.js        # 估值 / 待击球模块，退出码 0 = 全部通过
+node scripts/test_sync_check.js       # 内核「同步盘比对」逻辑（core.js）
+```
+
+- `test_valuation.js`：用 node 的 `vm` 造最小沙箱加载 `val-core.js` + `valuation.js` + `swing.js`，直接断言纯逻辑与渲染输出（不启浏览器）：
+  三级归档、估值时效、今日要处理、「⚡ 决策要点」、归档筛选、SOTP 分部估值口径、
+  横向排序与排行榜（**默认按「安全边际」降序**，安全边际列/ chip 均在第一位）、对比表 CSV、组合仓位（目标达成度 + 单票超限）、空数据不崩、触发线口径。
+- `test_sync_check.js`：同样用 vm 加载 `core.js`（假 DOM / 假 fetch / 假 localStorage），断言
+  HEAD 预筛是否省下载、`meta.updated` 才是判定依据、30s 容差、20 分钟节流、按版本忽略、
+  手动比对挑更新的候选、加载替换与取消、404 / 断网 / 格式不符 / 无时间戳时不崩。
+
+改完对应模块（含渲染函数互调、口径调整）建议先跑一遍，能挡住"语法正确但运行时才炸"的问题。
+
+### 6. 同步盘数据比对（不需要额外脚本）
+
+数据主存是浏览器 IndexedDB，磁盘上的 `goal-tracker-data.json` **不会自动写回**，也只在
+「本机 IndexedDB 为空（首次 / 换设备）」或「手动导入」时被读入。
+
+于是内核加了一次启动比对（`core.js` 的 `checkRemoteData`）：
+
+1. 先对 `./goal-tracker-data.json`、`./data/goal-tracker-data.json` 发 **HEAD**，读 `Last-Modified`；
+   判断出「不可能更新」时连正文都不下载（JSON 有几 MB）。
+2. 真正下载后，**以 JSON 内部的 `meta.updated` 为准**与浏览器内数据比（文件时间不可信：
+   导出时间总是晚于最后落盘时间，直接用文件时间会在「刚导出」时误报）。
+3. 远端确实更新 → 右上角浮出提示条（同步盘时间/条数 vs 本机时间/条数），由用户选择
+   「先导出本机备份」或「加载同步盘数据」。**绝不自动覆盖**。
+4. 「✕ 本次忽略」会按远端 `meta.updated` 记名，同一版本不再自动提示；侧边栏
+   「🔄 检查同步盘」可随时手动比对（无视节流与忽略记录）。
+
+阈值/行为常量都在 `core.js` 顶部：`REMOTE_MIN_GAP_MS`（默认 30s）、`REMOTE_RECHECK_MS`（默认 20 分钟）。
+
+> 注意：两个路径同名文件时以「`meta.updated` 更新者」胜出。若你同时用脚本产出
+> `data/goal-tracker-data.json`、又手动导出到根目录 `goal-tracker-data.json`，两边内容会不一致，
+> 提示条会明确显示各自的时间与条数，按需选择即可。
+
+### 7. 组合仓位的数据从哪来（不需要额外脚本）
+
+待击球页的「⚖ 组合仓位」不维护第二份持仓，它读的是**公司估值的投资买卖记录**：
+
+- 份额 / 成本 / 已实现盈亏：`公司估值 → 公司详情 → 📝 投资买卖记录`（买入/卖出 价格+股数）
+- 仓位归类：`待击球` 台账条目上的「仓位类型」（核心候选 / 轮动 / 另册周期）
+- 分母：待击球页「账户总资金」输入框（未填则退化为「持仓市值合计」，只反映相对结构）
+
+所以要让组合仓位有数：先建估值公司 → 导入行情（现价）→ 录投资买卖记录 → 再到待击球给该公司选仓位类型。
+
 ## 导入到 GoalTracker
 
 1. **财务数据**：公司估值 → 该公司详情 → 「财务数据」→ 「⬆ 导入 CSV」→ 选 `data/financial/{ticker}_{名}.csv`；或「⬆ 批量导入财务」多选批量导入
@@ -257,6 +322,7 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
    - 导出：「⬇ 导出全部」→ `宏观经济_全部数据.csv`
 5. **盈利预测**：公司估值 → 「⬆ 批量导入预测」多选 `data/forecast/` 下全部 CSV（按代码/名称自动匹配公司）；单家公司也可在详情 → 「📈 盈利预测」→「⬆ 导入预测」导入
    - 导出：详情页「⬇ 导出预测」
+6. **估值报告**：运行 `py scripts/build_valuation_index.py` 生成 `valuations/_index.json`，公司详情页「⚡ 决策要点」→「📄 估值报告」按公司名自动列出并可弹窗阅读
 
 ### 新批次公司完整工作流
 
@@ -333,3 +399,7 @@ py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH --update-json
 - **接口失败**：东财接口偶尔限流，脚本内置重试；仍失败请稍后重试。
 - **只想更新部分指标**：财务 CSV 中留空某列即可（导入时空值不覆盖已有数据）。
 - **盈利预测更新最新数据**：重新运行 `--update-json` 会覆盖该公司 forecast 为最新抓取结果（当前为全量覆盖，非增量）。
+- **换了设备 / 别处导出了新数据，本机没反应**：点侧边栏「🔄 检查同步盘」手动比对；页面启动时也会自动比对一次
+  （20 分钟内不重复），发现磁盘更新会在右上角提示，由你决定是否加载。详见上文「6. 同步盘数据比对」。
+- **提示条不出现**：确认页面是通过 http(s) / 本地服务器打开的——`file://` 直接双击 HTML 时浏览器禁止读取本地 JSON，
+  比对与估值报告都会失效。

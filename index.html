@@ -47,10 +47,13 @@
     <button class="btn ghost sm" data-action="theme.toggle" title="切换深色 / 浅色主题">🌙 深色模式</button>
     <button class="btn ghost sm" data-action="data.export" title="导出完整数据备份：goal-tracker-data.json（含全部模块数据，用于换设备/同步盘）">⬇ 导出备份</button>
     <button class="btn ghost sm" data-action="data.import" title="导入数据：goal-tracker-data.json（会用导入内容覆盖当前数据，建议先导出备份）">⬆ 导入数据</button>
+    <button class="btn ghost sm" data-action="data.remoteCheck" title="比对同步盘里的 goal-tracker-data.json 与浏览器内的数据，若磁盘更新可一键加载">🔄 检查同步盘</button>
     <div class="side-note">数据文件名：goal-tracker-data.json<br>IndexedDB 本地存储 · 导出 JSON 同步</div>
   </div>
 </aside>
 <main id="main"></main>
+<!-- 同步盘更新提示条（core.js 的 checkRemoteData 填充；初始 hidden） -->
+<div id="remote-bar" class="remote-bar" hidden></div>
 <div id="modal-root"></div>
 <input type="file" id="import-file" accept="application/json" hidden>
 <!-- 内核 -->

@@ -59,10 +59,19 @@
     let valPos = 0, valCost = 0, valMv = 0;
     valCos.forEach(c => { const p = V.calcPosition(c.investments||[]); valPos += p.position; valCost += p.cost; valMv += p.position * (c.currentPrice||0); });
     const valPnl = valMv - valCost;
+    // 三级归档分布 + 估值时效（与估值模块同一口径，通过 ValHelpers 复用）
+    const tiers = V.VAL_TIERS || [];
+    const tierCnt = k => valCos.filter(c => c.tier === k).length;
+    const untiered = valCos.filter(c => !c.tier).length;
+    const staleCnt = (typeof V.valFreshness === 'function')
+      ? valCos.filter(c => V.valFreshness(c).code !== 'ok').length : 0;
     h += '<div class="dash-grid">';
     h += '<div class="card"><div class="sec-title"><h2><span class="dot" style="background:var(--indigo)"></span>公司估值</h2>' +
       '<button class="btn ghost sm" data-action="nav" data-view="valuation">进入 →</button></div>' +
       '<div class="stat-line"><span>关注公司</span><b>' + valCos.length + ' 家</b></div>' +
+      (tiers.length ? '<div class="stat-line"><span>三级归档</span><b>' + tiers.map(t => esc(t.key) + ' ' + tierCnt(t.key)).join(' · ') +
+        (untiered ? ' · 未分档 ' + untiered : '') + '</b></div>' : '') +
+      (staleCnt ? '<div class="stat-line"><span>估值待重估</span><b class="down">' + staleCnt + ' 家</b></div>' : '') +
       (valPos > 0 ? '<div class="stat-line"><span>持仓市值</span><b>' + V.fmtMoney(valMv) + '</b></div>' +
       '<div class="stat-line"><span>浮动盈亏</span><b class="' + (valPnl >= 0 ? 'up' : 'down') + '">' + V.fmtMoney(valPnl) + ' (' + V.fmtPct(valCost > 0 ? valPnl/valCost*100 : 0) + ')</b></div>' : '<div class="stat-line muted">暂无持仓</div>') + '</div>';
     h += '<div class="card"><div class="sec-title"><h2>📌 快速入口</h2></div>' +
