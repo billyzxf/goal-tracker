@@ -134,5 +134,55 @@ window.ValCore = (function(){
     return (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
   }
 
-  return { evalFormula, calcValuation, calcMoS, calcPosition, fmtMoney, fmtPct };
+  /* ----- 公司评级系统（S/A/B/C/D）-----
+   * 灵魂公式：不确定性越大，所有参数越苛刻。S 级的宽容是"挣来的"（三重验证），C 级的苛刻是"应得的"。
+   * tol = 击球区（× 中性中枢）：S 0.90-1.05 合理价就买 … C 0.60-0.80 极端恐慌；D 禁入（tol=null）。
+   * posCap = 仓位权限%（与仓位池上限取 min）；stop = 止损宽度%；review = 验证频率。 */
+  const RATING_LEVELS = [
+    { g:'S', cls:'red',    tol:[0.90, 1.05], posCap:20, stop:-15, review:'季报',           desc:'三重验证挣来的宽容：合理价就买' },
+    { g:'A', cls:'green',  tol:[0.80, 0.95], posCap:15, stop:-12, review:'季报',           desc:'优质核心：正常折价买入' },
+    { g:'B', cls:'indigo', tol:[0.70, 0.88], posCap:10, stop:-10, review:'季报 + 中报体检', desc:'要深折才买' },
+    { g:'C', cls:'amber',  tol:[0.60, 0.80], posCap:5,  stop:-8,  review:'月度现金流',      desc:'试仓：只等极端恐慌' },
+    { g:'D', cls:'gray',   tol:null,         posCap:0,  stop:null, review:'—',             desc:'禁入：不建仓，持仓按止损纪律退出' },
+  ];
+  /* 四维打分（各 0-4 分，满分 16）：三路输入 → 维度
+   * 财报 → A 优势 + E 弹性；行业分析 → I 行业 + C 竞争；研报 → E 弹性（预期差基准）。 */
+  const RATING_DIMS = [
+    { key:'A', label:'A · 业绩优势（财报）',    hint:'增速对照一致预期；盈利质量只给"是/否"不打虚分；OCF 连续背离 → 本维度 ≤2 分' },
+    { key:'E', label:'E · 弹性与预期差（研报）', hint:'预期差基准来自研报：目标价不进估值、数据自己验证；一致预期 ≥90% 看多 → 预期差消失，本维度 ≤2 分' },
+    { key:'I', label:'I · 行业景气（行业分析）', hint:'行业研究温度计拐点信号 ≥3 个转正 → 4 分起步；结合景气度与政策态度' },
+    { key:'C', label:'C · 竞争格局（行业分析）', hint:'份额趋势 + 进入壁垒；格局恶化是自动降级触发之一' },
+  ];
+  const rClamp = v => Math.max(0, Math.min(4, parseInt(v, 10) || 0));
+  /* 自动评级：打分 + 戒律门控（OCF 背离 → A≤2；一致预期过热 → E≤2）+
+   * S 级准入（三重验证：业绩/逻辑/时间，缺一上限 A——新标的先观察一个季度再升级） */
+  function ratingAutoGrade(scores, flags){
+    scores = scores || {}; flags = flags || {};
+    const s = { A: rClamp(scores.A), E: rClamp(scores.E), I: rClamp(scores.I), C: rClamp(scores.C) };
+    const notes = [];
+    if(flags.ocfDiverge && s.A > 2){ s.A = 2; notes.push('OCF 连续背离 → A 维度 ≤2 分'); }
+    if(flags.consensusHot && s.E > 2){ s.E = 2; notes.push('一致预期 ≥90% 看多 → 预期差消失，E ≤2 分'); }
+    const sum = s.A + s.E + s.I + s.C;
+    const verified = !!(flags.v1 && flags.v2 && flags.v3);
+    let grade;
+    if(sum >= 13 && verified) grade = 'S';
+    else if(sum >= 10) grade = 'A';
+    else if(sum >= 7) grade = 'B';
+    else if(sum >= 4) grade = 'C';
+    else grade = 'D';
+    if(grade === 'S') notes.push('三重验证通过');
+    else if(sum >= 13 && !verified) notes.push('分数够 S 但三重验证未全过 → 上限 A');
+    return { grade: grade, sum: sum, scores: s, verified: verified, notes: notes };
+  }
+  /* 评级徽章：有评级 → 等级徽章（悬停看参数）；无 → 未评级灰牌 */
+  function ratingBadgeHTML(r){
+    if(!r || !r.grade) return '<span class="badge gray" style="opacity:.6" title="未评级：在「公司估值 → 公司详情 → 🏛 公司评级」完成四维打分">🏛 未评级</span>';
+    const L = RATING_LEVELS.find(x => x.g === r.grade);
+    if(!L) return ratingBadgeHTML(null);
+    const tol = L.tol ? ' · 击球区 ×' + L.tol[0] + '–' + L.tol[1] : ' · 禁入';
+    return '<span class="badge ' + L.cls + '" title="评级 ' + L.g + '"' + (L.tol ? '' : ' style="opacity:.8"') + '>🏛 ' + L.g + '</span>';
+  }
+
+  return { evalFormula, calcValuation, calcMoS, calcPosition, fmtMoney, fmtPct,
+    RATING_LEVELS, RATING_DIMS, ratingAutoGrade, ratingBadgeHTML };
 })();

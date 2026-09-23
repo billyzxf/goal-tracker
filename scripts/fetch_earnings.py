@@ -21,7 +21,14 @@ CSV 命名规则（按财报发布日期 + 类别，支持存多个、互不覆�
   ② RPT_F10_FINANCE_MAINFINADATA    扣非净利润(元)/扣非净利同比%/经营现金流净额(元)
   ③ RPT_F10_FINANCE_GCASHFLOW       资本开支（购建固定资产等，元）
   ④ RPT_F10_BASIC_ORGINFO           行业/板块（按日期获取的公司补充标签）
-  ⑤ F10 盈利预测接口                当年一致预期（--consensus 开启）
+
+性能提示：
+  - 每家公司需 3 次 F10 请求（扣非/现金流/毛利润），是批量获取的主要耗时来源；
+    按日期批量时先用 --min-yoy 过滤（在补齐之前执行）可显著减少请求数，例如
+    --min-yoy 20 通常能把 3000+ 家压到 800 家左右。
+  - --no-full 可跳过这些补齐（每家公司只剩 1 次业绩报表请求，最快），
+    但会缺少「扣非净利同比/扣非净利润/经营现金流/销售收现」等字段，L1 真实性筛选将失效。
+  - --workers 可调整并发（默认 6），网络好时可适当调大。
 
 用法示例：
   # ① 关注列表最新财报（默认）
@@ -35,7 +42,6 @@ CSV 命名规则（按财报发布日期 + 类别，支持存多个、互不覆�
 
   # ③ 披露日期范围 + 只保留营收同比≥20% + 指定市场 + 分类标签
   py fetch_earnings.py --start 2026-08-01 --end 2026-08-31 --min-yoy 20 --market SH,SZ --category 8月
-  py fetch_earnings.py --date 2026-08-12 --consensus --limit 100
 
 说明：
   - 按披露日期获取（模式③）默认【仅 A 股主板】（上证主板 60/深证主板 00），
@@ -62,24 +68,12 @@ except Exception:
 from eastmoney import EastmoneyClient, to_yi, _norm_report_date
 
 # 汇总 CSV 列（与前端 earnings.js 的列定义顺序一致）
-# 「当年一致预期」取财报发布年份（披露日期年份）的一致预期：
-#   预期营收(亿)/预期净利(亿)/预期营收同比%/预期净利同比%
-#   —— 用于判断财报是否超预期（实际营收/净利 vs 当年一致预期）。
 OUT_COLUMNS = [
-    '股票代码', '公司名称', '行业', '板块', '林奇类型',
+    '股票代码', '公司名称', '行业', '行业二级', '行业三级', '板块', '林奇类型',
     '披露日期', '报告期', '季度',
     '营业收入', '营收同比', '毛利润', '净利润', '扣非净利润', '扣非净利同比',
     '经营现金流', '销售收现', '资本开支', 'ROE', '毛利率',
-    '预期营收', '预期净利', '预期营收同比', '预期净利同比',
 ]
-
-# 业绩报表接口能直接提供的字段 → 仅依赖业绩报表时的列（按日期获取可快速生成）
-EARNINGS_ONLY_COLUMNS = [
-    '股票代码', '公司名称', '行业', '板块', '林奇类型',
-    '披露日期', '报告期', '季度',
-    '营业收入', '营收同比', '净利润', 'ROE', '毛利率',
-]
-
 
 def as_num(v):
     if v is None or v == '-' or v == '':
@@ -152,7 +146,7 @@ def is_main_board(code):
 
 
 def load_companies_meta(json_path=None, csv_path=None):
-    """读取公司列表元数据，返回 {ticker: {name, industry, board, companyType}}。
+    """读取公司列表元数据，返回 {ticker: {name, industry, industryL2, industryL3, board, companyType}}。
     来源优先级：CSV（data/公司列表.csv，按列名解析，兼容估值模块导出的
     10 列格式「股票代码,公司名称,市场,板块,行业,林奇类型,行业细分,货币,现价,总股本」
     与旧 7 列格式）→ JSON（valuation.companies）；后加载的覆盖同 ticker 字段。"""
@@ -167,6 +161,8 @@ def load_companies_meta(json_path=None, csv_path=None):
                     meta[t] = {
                         'name': c.get('name') or t.split('.')[0],
                         'industry': c.get('industry') or '',
+                        'industryL2': c.get('industryL2') or '',
+                        'industryL3': c.get('industryL3') or '',
                         'board': c.get('board') or '',
                         'companyType': c.get('companyType') or '',
                     }
@@ -182,9 +178,11 @@ def load_companies_meta(json_path=None, csv_path=None):
                 code = str(r.get('股票代码') or '').strip().upper()
                 if not re.match(r'^\d{6}\.(SH|SZ|BJ)$', code):
                     continue
-                cur = meta.setdefault(code, {'name': '', 'industry': '', 'board': '', 'companyType': ''})
+                cur = meta.setdefault(code, {'name': '', 'industry': '', 'industryL2': '',
+                                             'industryL3': '', 'board': '', 'companyType': ''})
                 for col, key in (('公司名称', 'name'), ('板块', 'board'),
-                                 ('行业', 'industry'), ('林奇类型', 'companyType')):
+                                 ('行业', 'industry'), ('行业二级', 'industryL2'),
+                                 ('行业三级', 'industryL3'), ('林奇类型', 'companyType')):
                     v = str(r.get(col) or '').strip()
                     if v:
                         cur[key] = v
@@ -236,101 +234,7 @@ def _enrich_financials(em, row, latest):
         pass
 
 
-# 本地盈利预测缓存目录（fetch_profit_forecast.py 生成的 盈利预测_{代码}_{名称}.csv）
-FORECAST_DIR = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'forecast'))
-
-_FC_CACHE = {}   # 股票代码 → {年份: {...一致预期}}；None 表示本地无该股票缓存（需走 API）
-
-
-def _forecast_from_cache(secu, year):
-    """从 data/forecast/盈利预测_{secu}_*.csv 读取指定年份的一致预期。
-
-    返回 {revenue, np, revRatio, npRatio}（营收/净利单位：亿，CSV 中已是亿），
-    无缓存文件 / 解析失败 / 该年份缺失返回 None。每只股票的 CSV 只解析一次。
-    """
-    if secu in _FC_CACHE:
-        return (_FC_CACHE[secu] or {}).get(year)
-
-    # 找该股票的全部预测 CSV，取最新修改的一份
-    prefix = '盈利预测_%s_' % secu
-    candidates = []
-    if os.path.isdir(FORECAST_DIR):
-        for fn in os.listdir(FORECAST_DIR):
-            if fn.startswith(prefix) and fn.endswith('.csv'):
-                p = os.path.join(FORECAST_DIR, fn)
-                candidates.append((os.path.getmtime(p), p))
-    if not candidates:
-        _FC_CACHE[secu] = None
-        return None
-
-    path = max(candidates)[1]
-    by_year = {}
-    try:
-        with open(path, encoding='utf-8-sig') as f:
-            for parts in csv.reader(f):
-                if not parts or parts[0].strip().upper() != 'CONS':
-                    continue
-                # CONS,年份,标记,EPS,PE,ROE,营收(亿),净利(亿),营收同比%,净利同比%
-                if len(parts) < 10:
-                    continue
-
-                def _f(idx):
-                    v = parts[idx].strip()
-                    try:
-                        return float(v) if v else None
-                    except ValueError:
-                        return None
-
-                y = parts[1].strip()
-                if y.isdigit():
-                    by_year[y] = {'revenue': _f(6), 'np': _f(7),
-                                  'revRatio': _f(8), 'npRatio': _f(9)}
-    except Exception:   # noqa: BLE001
-        by_year = {}
-
-    _FC_CACHE[secu] = by_year or None
-    return (by_year or {}).get(year)
-
-
-def _add_consensus(em, row):
-    """补当年一致预期（营收/净利/同比）——取财报发布年份的一致预期。
-
-    优先读本地缓存 data/forecast/盈利预测_{股票代码}_*.csv（由 fetch_profit_forecast.py
-    生成，CONS 区块：年份/标记/EPS/PE/ROE/营收(亿)/净利(亿)/营收同比%/净利同比%），
-    缓存未命中该股票或该年份时才请求 F10 接口——批量场景下大幅提速。
-    """
-    pub_year = None
-    m = re.match(r'^(\d{4})', str(row.get('披露日期') or ''))
-    if m:
-        pub_year = int(m.group(1))
-    if not pub_year:
-        return
-
-    # —— 第一优先级：本地 CSV 缓存 ——
-    hit = _forecast_from_cache(row['股票代码'], str(pub_year))
-    if hit:
-        row['预期营收'] = hit['revenue']
-        row['预期净利'] = hit['np']
-        row['预期营收同比'] = hit['revRatio']
-        row['预期净利同比'] = hit['npRatio']
-        return
-
-    # —— 回退：请求 F10 接口 ——
-    try:
-        from fetch_profit_forecast import fetch_forecast as _fc
-        fc = _fc(row['股票代码'])
-        raw = next((c for c in (fc.get('chart') or []) if str(c.get('YEAR')) == str(pub_year)), None)
-        if raw:
-            row['预期营收'] = (raw.get('TOTAL_OPERATE_INCOME') / 1e8) if raw.get('TOTAL_OPERATE_INCOME') else None
-            row['预期净利'] = (raw.get('PARENT_NETPROFIT') / 1e8) if raw.get('PARENT_NETPROFIT') else None
-            row['预期营收同比'] = as_num(raw.get('TOTAL_OPERATE_INCOME_RATIO'))
-            row['预期净利同比'] = as_num(raw.get('PARENT_NETPROFIT_RATIO'))
-    except Exception:   # noqa: BLE001
-        pass
-
-
-def fetch_latest_earnings(em, ticker, name='', with_consensus=True, with_full=True):
+def fetch_latest_earnings(em, ticker, name='', with_full=True):
     """抓取单公司最新一期财报，返回汇总行 dict（键为 OUT_COLUMNS 中文名）。"""
     secu = ticker.upper()
     try:
@@ -357,13 +261,11 @@ def fetch_latest_earnings(em, ticker, name='', with_consensus=True, with_full=Tr
 
     if with_full:
         _enrich_financials(em, row, latest)
-    if with_consensus:
-        _add_consensus(em, row)
     return row
 
 
 def fetch_by_date(em, date_from, date_to, opts):
-    """按披露日期获取全部公司财报。opts: {min_yoy, markets, with_full, with_consensus, limit, include_non_a}。"""
+    """按披露日期获取全部公司财报。opts: {min_yoy, markets, with_full, limit, include_non_a, workers}。"""
     try:
         data, count = em.finance_earnings_by_date(date_from, date_to, page_size=500)
     except Exception as e:   # noqa: BLE001
@@ -431,6 +333,8 @@ def fetch_by_date(em, date_from, date_to, opts):
             '股票代码': secu,
             '公司名称': r.get('SECURITY_NAME_ABBR') or '',
             '行业': info.get('industry') or '',
+            '行业二级': info.get('industryL2') or '',
+            '行业三级': info.get('industryL3') or '',
             '板块': info.get('board') or '',
             '林奇类型': '',
             '披露日期': (r.get('NOTICE_DATE') or '')[:10],
@@ -444,8 +348,6 @@ def fetch_by_date(em, date_from, date_to, opts):
         }
         if opts['with_full']:
             _enrich_financials(em_t, row, r)
-        if opts['with_consensus']:
-            _add_consensus(em_t, row)
         return row
 
     tasks = []
@@ -505,7 +407,6 @@ def main():
     ap.add_argument('--include-bj', action='store_true', help='包含北交所（默认仅主板）')
     ap.add_argument('--all-board', action='store_true', help='包含全部板块（主板+创业板+科创板+北交所）')
     ap.add_argument('--limit', type=int, default=0, help='按日期获取时最多处理的公司数（0=不限）')
-    ap.add_argument('--consensus', action='store_true', help='按日期获取时也拉取当年一致预期（较慢）')
     ap.add_argument('--no-full', action='store_true', help='跳过补齐扣非/经营现金流/资本开支（更快，仅业绩报表字段）')
     ap.add_argument('--all-market', action='store_true', help='包含新三板/三板等非 A 股')
     ap.add_argument('--workers', type=int, default=6, help='按日期获取时的并发线程数（默认 6）')
@@ -540,7 +441,6 @@ def main():
         'markets': markets or set(),
         'boards': boards,
         'with_full': not args.no_full,
-        'with_consensus': args.consensus,
         'limit': args.limit,
         'workers': args.workers,
         'include_non_a': args.all_market,
@@ -572,11 +472,11 @@ def main():
             fname_date = _compact(dates[0])
     else:
         # 公司列表来源：默认 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）；
-        # 文件不存在（或显式 --json）时回退 goal-tracker-data.json
+        # 文件不存在（或显式 --json）时回退 data/goal-tracker-data.json
         list_csv = os.path.join(base_data, '公司列表.csv')
         json_src = args.json
         if not json_src and not os.path.exists(list_csv):
-            json_src = os.path.join(root, 'goal-tracker-data.json')
+            json_src = os.path.join(base_data, 'goal-tracker-data.json')
         # 模式②：指定关注公司
         if args.codes:
             mode = 'codes'
@@ -597,35 +497,62 @@ def main():
             meta = load_companies_meta(json_path=json_src,
                                        csv_path=list_csv if os.path.exists(list_csv) else None)
             if not meta:
-                print('未找到公司列表：data/公司列表.csv 与 goal-tracker-data.json 均为空或不存在。')
+                print('未找到公司列表：data/公司列表.csv 与 data/goal-tracker-data.json 均为空或不存在。')
                 print('请先在估值模块「⬇ 导出公司列表」生成 data/公司列表.csv，或用 --json / --codes / --date 指定。')
                 return 1
 
     if mode in ('watchlist', 'codes'):
         print('\n== %s %d 家公司 ==' % ('关注列表' if mode == 'watchlist' else '指定公司', len(meta)))
-        ok = fail = 0
-        for ticker, info in meta.items():
+        # 批量补全行业层级：公司列表 CSV 可能只带一级行业，F10 可拿到二/三级（一次批量请求，成本极低）
+        try:
+            org = em.basic_orginfo(list(meta.keys()))
+        except Exception as e:   # noqa: BLE001
+            print('  行业层级补全失败（不影响主流程）：%s' % str(e)[:80])
+            org = {}
+        lv3_hit = sum(1 for v in org.values() if v.get('industryL3'))
+        print('  行业层级：%d/%d 家拿到三级分类' % (lv3_hit, len(meta)))
+        # 并发抓取（与按日期模式一致；每线程独立 client 避免共享 session 争用）
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        local = threading.local()
+
+        def _worker(item):
+            ticker, info = item
+            em_t = getattr(local, 'em', None)
+            if em_t is None:
+                em_t = local.em = EastmoneyClient()
             try:
-                row = fetch_latest_earnings(em, ticker, info.get('name') or ticker,
-                                            with_consensus=True, with_full=not args.no_full)
+                row = fetch_latest_earnings(em_t, ticker, info.get('name') or ticker,
+                                            with_full=not args.no_full)
                 if not row:
-                    print('⚠️  跳过 %s：无业绩报表数据' % ticker)
-                    fail += 1
-                    continue
-                row['行业'] = info.get('industry') or ''
+                    return (ticker, None, '无业绩报表数据')
+                o = org.get(str(ticker).split('.')[0]) or {}
+                row['行业'] = o.get('industry') or info.get('industry') or ''
+                row['行业二级'] = o.get('industryL2') or info.get('industryL2') or ''
+                row['行业三级'] = o.get('industryL3') or info.get('industryL3') or ''
                 row['板块'] = info.get('board') or ''
                 row['林奇类型'] = info.get('companyType') or ''
                 if args.min_yoy is not None and (as_num(row['营收同比']) or -1e9) < args.min_yoy:
-                    print('➖ %s 营收同比 < %d%% 跳过' % (ticker, args.min_yoy))
-                    continue
-                rows.append(row)
-                print('✅ %s  %-8s 披露=%s %s 营收同比=%s%%' % (
-                    ticker, row['公司名称'], row['披露日期'], row['季度'],
-                    '' if row['营收同比'] is None else round(row['营收同比'], 1)))
-                ok += 1
+                    return (ticker, None, '营收同比低于阈值（已过滤）')
+                return (ticker, row, None)
             except Exception as e:   # noqa: BLE001
-                print('❌ %s 抓取失败：%s' % (ticker, str(e)[:80]))
-                fail += 1
+                return (ticker, None, str(e)[:80])
+
+        ok = fail = 0
+        workers = max(1, int(getattr(args, 'workers', 6) or 6))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(_worker, it): it[0] for it in meta.items()}
+            for i, fut in enumerate(as_completed(futs), 1):
+                ticker, row, err = fut.result()
+                if err is None:
+                    rows.append(row)
+                    ok += 1
+                else:
+                    fail += 1
+                    print('❌ %s：%s' % (ticker, err))
+                if i % 100 == 0:
+                    print('  进度 %d/%d（成功 %d / 失败 %d）' % (i, len(meta), ok, fail))
+        print('  完成：成功 %d / 失败 %d' % (ok, fail))
         if not rows:
             print('\n未获取到任何财报数据。')
             return 1

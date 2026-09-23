@@ -102,6 +102,14 @@ INDICATORS = [
       '油价↑→通胀↑→美联储宽松空间↓→美债利率↑→估值承压。',
       [dict(type='yahoo', symbol='BZ=F'),
        dict(type='stooq', symbols=['cb.f', 'cl.f'])]),
+    I('wti', 'WTI 原油', '美元', '日度', '海外与利率',
+      '美油基准，比布伦特对美国通胀/库存更敏感：>100 = 通胀压力红灯（L1 宏观温度计项）。',
+      [dict(type='yahoo', symbol='CL=F'),
+       dict(type='stooq', symbols=['cl.f'])]),
+    I('vix', 'VIX 恐慌指数', '', '日度', '海外与利率',
+      '标普期权隐含波动率：>28 全球 risk-off，>35 后快速回落常是阶段底（L1 宏观温度计项）。',
+      [dict(type='yahoo', symbol='^VIX'),
+       dict(type='stooq', symbols=['^vix'])]),
     I('gold', '黄金', '美元', '日度', '海外与利率',
       '实际利率/美元/避险/央行购金的综合温度计，与实际利率负相关最稳定。',
       [dict(type='yahoo', symbol='GC=F'),
@@ -245,11 +253,21 @@ INDICATORS = [
       '全市场估值中枢，必须结合历史分位数看。',
       [dict(type='ak', fn='stock_a_ttm_lyr', date_col='日期', date_candidates=['日期', 'date'],
             val_candidates=['市盈率TTM', 'middlePETTM', 'TTM市盈率', '市盈率'], date_kind='day')]),
+
+    # ============ 第六层 · 行业高频（L2 行业温度计数据源） ============
+    I('dram_ddr4', 'DRAM 现货价 · DDR4 8Gb', '美元', '日度', '行业跟踪',
+      '存储周期高频代理（dramx.com 现货盘平均，取原厂正品口径）。站点改版时转手动录入。',
+      [dict(type='dramx', match='DDR4 8Gb')]),
+    I('dram_ddr5', 'DRAM 现货价 · DDR5 16Gb', '美元', '日度', '行业跟踪',
+      'DDR5 主力合约现货价（dramx.com 现货盘平均），对模组/接口芯片业绩弹性更直接。',
+      [dict(type='dramx', match='DDR5 16Gb')]),
 ]
 
 # 无稳定自动源、需手动录入的 seed 指标（结束时打印提醒）
-MANUAL_KEYS = ['tsf', 'corecpi', 'pmi_new', 'indprofit', 'prop_sale', 'unemp',
-               'etfflow', 'corploan', 'hhloan', 'govbond', 'cpi_mom']
+MANUAL_KEYS = ['tsf', 'pmi_new', 'unemp', 'cpi_mom',
+               # 行业高频（L2 行业温度计）：多为券商周报/百川盈孚口径，手动录入或 CSV
+               'roe_storage', 'vlcc_tce', 'r32', 'tc_rc', 'capex_big4',
+               'pcb_vis', 'pe_power', 'game_lic', 'mil_contr']
 
 # 遗留指标（旧 CSV 有历史数据，保留导出）
 LEGACY_KEYS = {'gdp_first', 'gdp_second', 'gdp_third', 'nmpmi', 'cpi_mom',
@@ -526,6 +544,48 @@ def fetch_chinamoney(step):
     return sorted(pts.items())
 
 
+DRAMX_URL = 'https://www.dramx.com/Price/DSD.html'   # 国际 DRAM 颗粒现货价
+
+def fetch_dramx(step):
+    """dramx.com DRAM 现货价（best-effort，公开数据）：
+    解析 DSD.html 价格表，取匹配规格行的「盘平均」列（原厂正品优先，跳过 eTT 白牌）。
+    页面每交易日午盘/晚盘更新。站点改版会导致解析失败 → 该指标转手动录入。"""
+    import re as _re
+    r = _http_get(DRAMX_URL, headers={'Referer': 'https://www.dramx.com/'}, timeout=25)
+    r.encoding = r.apparent_encoding or 'utf-8'
+    html = r.text
+    rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', html, _re.S | _re.I)
+    match = step['match']
+    want_ett = 'eTT' in match.upper()
+    pts, last_err = {}, '未找到匹配行：%s' % match
+    day = datetime.now().strftime('%Y-%m-%d')
+    for row in rows:
+        cells = [_re.sub(r'<[^>]+>', '', c).strip()
+                 for c in _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.S | _re.I)]
+        if len(cells) < 3:
+            continue          # 公开版行结构：名称 + 日高/日低/盘平均/涨跌幅（4 数据列）
+        name = cells[0]
+        if match.lower() not in name.lower():
+            continue
+        if not want_ett and 'eTT' in name:
+            continue          # 同规格存在 eTT（白牌）行时优先正品
+        nums = []
+        for c in cells[1:]:
+            c = c.replace('%', '').replace(',', '')
+            try:
+                nums.append(float(c))
+            except ValueError:
+                pass
+        # 列序两种布局：日高/日低/盘平均/涨跌幅（公开版）或 日高/日低/盘高/盘低/盘平均/涨跌幅；
+        # 「盘平均」恒在涨跌幅之前 → 取倒数第 2 个数值，对两种布局均成立
+        if len(nums) >= 3 and nums[-2] > 0:
+            pts[day] = nums[-2]
+            break
+    if not pts:
+        raise RuntimeError(last_err)
+    return sorted(pts.items())
+
+
 def fetch_stooq(symbols):
     """stooq 日线 CSV：https://stooq.com/q/d/l/?s=SYM&i=d（取收盘价）"""
     last_err = '无候选符号'
@@ -641,6 +701,7 @@ FETCHERS = {
     'em_kline': fetch_em_kline,
     'em_kline_sum': fetch_em_kline_sum,
     'em_dc': fetch_em_dc,
+    'dramx': fetch_dramx,
 }
 
 

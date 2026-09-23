@@ -32,10 +32,7 @@ goal-tracker-data*.json
 # 本地脚本产物
 *.ipynb_checkpoints
 
-# IDE / AI 工具 config dir
+# IDE config dir
 .codebuddy/
 .trae/
 .workbuddy/
-
-# AI 工具临时草稿
-scripts/_wf.txt

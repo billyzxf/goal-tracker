@@ -87,6 +87,11 @@ a{color:var(--indigo);text-decoration:none}
 /* ---------- 通用组件 ---------- */
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;border:1px solid rgba(231,234,240,.7)}
 .card + .card{margin-top:16px}
+/* 卡片网格：网格内间距交给 gap 控制，相邻卡片的外边距会把同行卡片推低/压缩导致高矮不齐；
+   行内卡片统一拉伸到行高（flex 列 + stretch），保证同一行卡片等高对齐 */
+.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:stretch}
+.grid-cards > .card{margin-top:0;display:flex;flex-direction:column}
+.grid-cards > .card + .card{margin-top:0}
 .sec-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap}
 .sec-title h2{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
 .sec-title .dot{width:8px;height:8px;border-radius:50%}
@@ -124,6 +129,9 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 14px;font-size:12px;color:var(--ink2);font-weight:600}
 .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* 二/三级行业级联筛选条（缩进 + 左侧竖线，视觉上从属上级） */
+.chips-sub{margin-left:6px;padding-left:12px;border-left:2px solid var(--line)}
+.chips-label{font-size:12px;color:var(--ink2);font-weight:600;align-self:center;margin-right:2px}
 /* 公司列表搜索框（公司估值 / 财报跟踪模块通用） */
 .kw-search{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);font-size:14px;outline:none;margin-bottom:12px}
 .kw-search:focus{border-color:var(--indigo);box-shadow:0 0 0 2px rgba(91,100,242,.12)}
@@ -137,6 +145,13 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--green);cursor:poi
 .earn-filterbar input[type=number]{width:84px}
 .earn-filterbar .chip{padding:4px 10px}
 .earn-filterbar .hint{font-size:12px;color:var(--ink2)}
+/* L1 规则组合说明（默认折叠，避免默认全选时占满屏幕） */
+.earn-rule-detail{margin:4px 2px 8px;font-size:12px;color:var(--ink2);line-height:1.9}
+.earn-rule-detail>summary{cursor:pointer;user-select:none;font-size:12px;color:var(--ink2);list-style:none;display:inline-flex;gap:4px;align-items:center}
+.earn-rule-detail>summary::-webkit-details-marker{display:none}
+.earn-rule-detail>summary::before{content:'▸';display:inline-block;font-size:11px;transition:transform .15s}
+.earn-rule-detail[open]>summary::before{transform:rotate(90deg)}
+.earn-rule-detail>summary:hover{color:var(--ink)}
 .progress{height:8px;border-radius:99px;background:var(--gray-bg);overflow:hidden}
 .progress > i{display:block;height:100%;border-radius:99px;background:var(--green);transition:width .3s}
 .empty{padding:26px;text-align:center;color:var(--ink2);font-size:13px;background:var(--bg2);border:1px dashed var(--line);border-radius:12px}
@@ -294,6 +309,7 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 /* 悬停高亮优先于季度底色（tbody 提升优先级） */
 .val-table tbody tr:hover td{background:var(--bg2)}
 .val-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.val-table th.num{text-align:right;font-variant-numeric:tabular-nums}
 .val-table .actions-cell{text-align:right;white-space:nowrap}
 /* 宽屏自适应表格（财报跟踪等多列表格）：
  *   - 主内容区 #main 默认 max-width:1220px 会限制表格宽度；当页面含宽表时解除该限制，
@@ -303,6 +319,8 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
  *       内容总宽 > 容器（窄屏）→ min-width:max-content 生效，表格按列内容自然撑开，由外层横向滚动。
  *   - white-space:nowrap 保证列内容不换行，列宽按内容宽度计算，避免被压缩。 */
 #main:has(.wide-table-wrap){max-width:none}
+/* 网格页（公司估值 / 行业地图）：解除 1220px 宽度上限，随窗口变宽以增加每行列数 */
+#main:has(.company-grid),#main:has(.grid-cards){max-width:none}
 .wide-table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
 .wide-table-wrap > .val-table{width:100%;min-width:max-content}
 .wide-table-wrap > .val-table th,
@@ -323,17 +341,22 @@ html.dark .val-table tr.fin-q4 td{background:rgba(129,140,248,.21)}
 .fc-block{margin:12px 0;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
 .fc-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:8px;display:flex;align-items:center}
 .mos-neg{color:var(--red);font-weight:700}
+.company-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;align-items:stretch;margin-top:4px}
+@media(max-width:1320px){.company-grid{grid-template-columns:repeat(1,1fr)}}
+.company-grid > .company-card{margin-bottom:0;display:flex;flex-direction:column;height:100%}
 .company-card{background:var(--card);border:1px solid rgba(231,234,240,.7);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);margin-bottom:14px;transition:box-shadow .15s,transform .15s}
 .company-card:hover{box-shadow:0 4px 20px rgba(20,30,50,.1);transform:translateY(-1px)}
 .company-card .cc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .company-card .cc-name{font-size:17px;font-weight:700;cursor:pointer}
 .company-card .cc-name:hover{color:var(--indigo)}
 .company-card .cc-meta{font-size:12px;color:var(--ink2);margin-top:2px}
-.company-card .cc-stats{display:flex;gap:22px;flex-wrap:wrap;margin-top:12px}
+.company-card .cc-stats{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px}
 .company-card .cc-group + .cc-group{margin-top:10px}
 .company-card .cc-group-title{font-size:11px;font-weight:600;color:var(--ink2);margin-bottom:2px;letter-spacing:.5px}
-.company-card .cc-group .cc-stats{margin-top:4px;gap:18px}
-.company-card .cc-stat .label{color:var(--ink2);font-size:11px;display:block}
+.company-card .cc-group .cc-stats{margin-top:4px;gap:6px 12px}
+/* 每个指标单行横排：label 与值同排行内展示，nowrap 保证不换行拉高、不截断内容 */
+.company-card .cc-stat{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;line-height:1.7;min-width:0}
+.company-card .cc-stat .label{color:var(--ink2);font-size:12px;display:inline}
 .company-card .cc-stat .val{font-weight:700;font-variant-numeric:tabular-nums;font-size:14px}
 .back-link{display:inline-flex;align-items:center;gap:4px;color:var(--ink2);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:14px;padding:4px 0}
 .back-link:hover{color:var(--ink)}
@@ -471,6 +494,30 @@ html.dark .invalid-box.is-broke{background:rgba(241,106,106,.09)}
 .pr-due-item.pr-soon{background:var(--amber-bg);border-color:#fde68a}
 .pr-due-main{flex:1;min-width:0}
 .pr-due-title{font-size:14px;font-weight:600}
+.pr-due-point{font-size:13px;line-height:1.6;color:var(--ink2);margin-top:6px;padding:8px 10px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;white-space:pre-wrap}
+/* 行业景气统计指标（行业详情 + 行业地图卡片）——紧凑单行 */
+.ind-mline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11px;line-height:1.4}
+/* 行业地图卡：卡数上限 5，随宽度递减，保证每卡宽度足以完整显示 */
+.ind-grid{grid-template-columns:repeat(3,1fr)}
+@media(max-width:1320px){.ind-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.ind-grid{grid-template-columns:repeat(1,1fr)}}
+.ind-mini{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap}
+.ind-mini i{font-style:normal;color:var(--ink2)}
+.ind-mini b{font-weight:600;font-size:12px}
+.ind-mini b.up{color:var(--up,#c0392b)}
+.ind-mini b.down{color:var(--down,#27ae60)}
+.ind-mini b.muted{color:var(--ink2)}
+.ind-mini b.num{color:var(--ink)}
+/* 行业详情页大号指标卡 */
+.ind-mbig{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+.ind-mtile{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.ind-mtile-v{font-size:22px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.ind-mtile-l{font-size:12px;color:var(--ink2)}
+.ind-mtile-v.up{color:var(--up,#c0392b)}
+.ind-mtile-v.down{color:var(--down,#27ae60)}
+.ind-mtile-v.muted{color:var(--ink2)}
+.ind-mtile-v.num{color:var(--ink)}
+@media (max-width:720px){.ind-mbig{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .pr-due-item.pr-overdue .pr-due-title{color:var(--red)}
 .pr-rv-item .sec-title h2{font-size:15px}
 .pr-rv-line{display:flex;align-items:center;gap:8px;margin:6px 0}
@@ -540,8 +587,9 @@ html.dark .invalid-box.is-broke{background:rgba(241,106,106,.09)}
 .macro-layer{margin-top:16px}
 .macro-layer-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-left:4px solid var(--indigo);border-radius:8px;margin-bottom:14px}
 .ml-title{display:flex;align-items:center;gap:8px;font-size:15px;flex-wrap:wrap}
-.macro-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media(max-width:1080px){.macro-cards{grid-template-columns:1fr}}
+.macro-cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media(max-width:1280px){.macro-cards{grid-template-columns:1fr 1fr}}
+@media(max-width:860px){.macro-cards{grid-template-columns:1fr}}
 .macro-fw{margin-bottom:16px}
 .macro-quad{margin-bottom:16px}
 .quad-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:460px}
@@ -614,14 +662,14 @@ html.dark .invalid-box.is-broke{background:rgba(241,106,106,.09)}
 .fw-delta{font-size:11px;font-weight:700;margin-left:3px;font-variant-numeric:tabular-nums}
 
 /* ---------- 宏观经济 ---------- */
-.macro-cat-title{font-size:15px;font-weight:800;margin:26px 0 12px;padding-left:10px;border-left:4px solid var(--indigo);color:var(--ink)}
-.macro-card{margin-bottom:18px}
-.macro-latest{display:flex;align-items:baseline;gap:8px;margin:2px 0 4px;flex-wrap:wrap}
-.macro-value{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
-.macro-unit{font-size:13px;color:var(--ink2);font-weight:600}
-.macro-date{font-size:12px;color:var(--ink2);margin-left:auto}
-.macro-chart{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0 4px}
-.chart-note{font-size:12px;color:var(--ink2);background:var(--bg2);padding:6px 10px;border-radius:6px;margin-bottom:8px;line-height:1.5}
+.macro-cat-title{font-size:15px;font-weight:800;margin:18px 0 8px;padding-left:10px;border-left:4px solid var(--indigo);color:var(--ink)}
+.macro-card{margin-bottom:8px}
+.macro-latest{display:flex;align-items:baseline;gap:6px;margin:1px 0 2px;flex-wrap:wrap}
+.macro-value{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.2}
+.macro-unit{font-size:12px;color:var(--ink2);font-weight:600}
+.macro-date{font-size:11px;color:var(--ink2);margin-left:auto}
+.macro-chart{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;margin:5px 0 2px}
+.chart-note{font-size:11px;color:var(--ink2);background:var(--bg2);padding:4px 8px;border-radius:6px;margin-bottom:6px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;cursor:help}
 .macro-actions{display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap}
 /* 明细数据折叠（默认收起，点开展开） */
 .macro-table-wrap{margin-left:8px}

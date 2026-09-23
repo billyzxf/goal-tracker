@@ -342,13 +342,28 @@
       return '<div class="pr-due-item '+(st.s==='due'?'pr-overdue':st.s==='today'?'pr-today':'pr-soon')+'">'+
         '<span class="badge '+(st.s==='due'?'red':st.s==='today'?'blue':'amber')+'">'+tag+'</span>'+
         '<div class="pr-due-main"><div class="pr-due-title">'+esc(p.title)+'</div>'+
-        '<div class="muted">'+esc(sub)+' · '+esc(p.cat)+'</div></div>'+
+        '<div class="muted">'+esc(sub)+' · '+esc(p.cat)+'</div>'+
+        (p.point ? '<div class="pr-due-point">'+esc(p.point)+'</div>' : '')+'</div>'+
         '<button class="btn primary sm" data-action="pr.review" data-pid="'+p.id+'">去审视</button></div>';
     }).join('');
     return h + '</div>';
   }
 
-  /* ================= 渲染：原则库 ================= */
+  /* 未审视清单：从未审视过的原则，独立列出便于逐个补齐，不干扰已审原则的轮换节奏 */
+  function renderUnreviewed(){
+    const un = P().principles.filter(p => p.status !== '已归档' && !lastReviewDate(p));
+    if(!un.length) return '';
+    const hItems = un.map(p =>
+      '<div class="pr-due-item pr-soon">'+
+        '<span class="badge amber">尚未审视</span>'+
+        '<div class="pr-due-main"><div class="pr-due-title">'+esc(p.title)+'</div>'+
+        '<div class="muted">'+esc(p.point || p.cat)+' · '+esc(p.cat)+' · '+esc(p.cycle||'每月')+'审视</div></div>'+
+        '<button class="btn primary sm" data-action="pr.review" data-pid="'+p.id+'">去审视</button></div>'
+    ).join('');
+    return '<div class="card pr-due"><div class="sec-title" style="margin-bottom:10px"><h2 style="color:var(--amber)">📋 尚未审视 · 请补齐</h2><div class="q-actions"><span class="badge amber">'+un.length+'</span></div></div>'+hItems+'</div>';
+  }
+
+  /* ================= 渲染：审视历史 ================= */
   function renderLib(){
     const st = state.pr;
     let h = '<div class="chips" style="margin-bottom:14px">' +
@@ -516,6 +531,7 @@
       '<button class="btn primary" style="background:var(--indigo)" data-action="pr.add">＋ 新增原则</button>');
 
     h += renderDue();
+    h += renderUnreviewed();
 
     // Tab 导航
     const tabs = [ ['lib','📚 原则库'], ['review','🔄 定期审视'], ['logs','📝 原则日志'], ['stats','📊 数据统计'] ];
@@ -688,6 +704,9 @@
     openModal('定期审视',
       '<div class="field"><label>选择原则</label><select name="title">'+principleOptions(title)+'</select></div>'+
       '<div class="field"><label>审视日期</label><input type="date" name="date" value="'+dateStr()+'"></div>'+
+      '<div class="field"><label>原则详细内容 <span style="color:var(--amber)">（可在审视时随手迭代优化）</span></label>'+
+      '<textarea name="prPoint" rows="3" style="width:100%;box-sizing:border-box;font-size:14px;font-family:inherit;line-height:1.5;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg);color:var(--ink);resize:vertical" placeholder="这条原则的要点 / 准则，审视后可在此完善">'+esc(p ? (p.point||'') : '')+'</textarea>'+
+      '<div class="muted" style="font-size:12px;margin-top:4px">保存审视时会一并把这里的修改写回原则库</div></div>'+
       '<div class="field"><label>坚持评分（1-5）</label><div class="pr-stars" id="rvStars">'+
         [1,2,3,4,5].map(n => '<button type="button" class="pr-star" data-n="'+n+'">★</button>').join('')+'</div></div>'+
       '<div class="field"><label>本次判定</label><div class="pr-verdicts" id="rvVerdicts">'+
@@ -719,6 +738,10 @@
           const g = P().goals.find(x => x.name === goalSel.value);
           if(g) root.querySelector('input[name=goalProgress]').value = g.progress;
         });
+        // 切换原则时，同步加载该原则的详细内容
+        const rvTitleSel = root.querySelector('select[name=title]');
+        const rvPointTa = root.querySelector('textarea[name=prPoint]');
+        rvTitleSel.addEventListener('change', () => { const pl = findPByTitle(rvTitleSel.value); rvPointTa.value = (pl && pl.point) ? pl.point : ''; });
         window._rvScore = 3; window._rvVerdict = '部分坚持';
       });
   }
@@ -726,6 +749,9 @@
     const title = fd.get('title');
     if(!title){ alert('请选择原则'); return; }
     const p = findPByTitle(title);
+    // 把审视时迭代过的详细内容写回原则库（配合「定期审视卡片/弹窗」的编辑能力）
+    const newPoint = fd.get('prPoint');
+    if(p && newPoint != null && newPoint !== (p.point || '')){ p.point = newPoint; }
     const goal = fd.get('goal');
     const rv = { id:uid(), pid: p ? p.id : null, title, date: fd.get('date')||dateStr(),
       score: window._rvScore||3, verdict: window._rvVerdict||'部分坚持',

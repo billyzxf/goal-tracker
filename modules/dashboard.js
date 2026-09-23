@@ -53,34 +53,41 @@
       '<div class="stat-line"><span>灵感储备</span><b>' + sideIdea + ' 个</b></div></div>';
     h += '</div>';
 
-    // 公司估值汇总
+    // 公司估值汇总（投资模块已拆至 invest.html 独立应用；此处仅当估值模块被加载时聚合，避免依赖缺失抛错）
     const V = window.ValHelpers || {};
-    const valCos = DB.valuation.companies;
-    let valPos = 0, valCost = 0, valMv = 0;
-    valCos.forEach(c => { const p = V.calcPosition(c.investments||[]); valPos += p.position; valCost += p.cost; valMv += p.position * (c.currentPrice||0); });
-    const valPnl = valMv - valCost;
-    // 三级归档分布 + 估值时效（与估值模块同一口径，通过 ValHelpers 复用）
-    const tiers = V.VAL_TIERS || [];
-    const tierCnt = k => valCos.filter(c => c.tier === k).length;
-    const untiered = valCos.filter(c => !c.tier).length;
-    const staleCnt = (typeof V.valFreshness === 'function')
-      ? valCos.filter(c => V.valFreshness(c).code !== 'ok').length : 0;
+    const hasInv = !!(DB.valuation && V && typeof V.calcPosition === 'function');
     h += '<div class="dash-grid">';
-    h += '<div class="card"><div class="sec-title"><h2><span class="dot" style="background:var(--indigo)"></span>公司估值</h2>' +
-      '<button class="btn ghost sm" data-action="nav" data-view="valuation">进入 →</button></div>' +
-      '<div class="stat-line"><span>关注公司</span><b>' + valCos.length + ' 家</b></div>' +
-      (tiers.length ? '<div class="stat-line"><span>三级归档</span><b>' + tiers.map(t => esc(t.key) + ' ' + tierCnt(t.key)).join(' · ') +
-        (untiered ? ' · 未分档 ' + untiered : '') + '</b></div>' : '') +
-      (staleCnt ? '<div class="stat-line"><span>估值待重估</span><b class="down">' + staleCnt + ' 家</b></div>' : '') +
-      (valPos > 0 ? '<div class="stat-line"><span>持仓市值</span><b>' + V.fmtMoney(valMv) + '</b></div>' +
-      '<div class="stat-line"><span>浮动盈亏</span><b class="' + (valPnl >= 0 ? 'up' : 'down') + '">' + V.fmtMoney(valPnl) + ' (' + V.fmtPct(valCost > 0 ? valPnl/valCost*100 : 0) + ')</b></div>' : '<div class="stat-line muted">暂无持仓</div>') + '</div>';
+    if(hasInv){
+      const valCos = DB.valuation.companies || [];
+      let valPos = 0, valCost = 0, valMv = 0;
+      valCos.forEach(c => { const p = V.calcPosition(c.investments||[]); valPos += p.position; valCost += p.cost; valMv += p.position * (c.currentPrice||0); });
+      const valPnl = valMv - valCost;
+      // 三级归档分布 + 估值时效（与估值模块同一口径，通过 ValHelpers 复用）
+      const tiers = V.VAL_TIERS || [];
+      const tierCnt = k => valCos.filter(c => c.tier === k).length;
+      const untiered = valCos.filter(c => !c.tier).length;
+      const staleCnt = (typeof V.valFreshness === 'function')
+        ? valCos.filter(c => V.valFreshness(c).code !== 'ok').length : 0;
+      h += '<div class="card"><div class="sec-title"><h2><span class="dot" style="background:var(--indigo)"></span>公司估值</h2>' +
+        '<button class="btn ghost sm" onclick="location.href=\'invest.html\'">进入投资研究 →</button></div>' +
+        '<div class="stat-line"><span>关注公司</span><b>' + valCos.length + ' 家</b></div>' +
+        (tiers.length ? '<div class="stat-line"><span>三级归档</span><b>' + tiers.map(t => esc(t.key) + ' ' + tierCnt(t.key)).join(' · ') +
+          (untiered ? ' · 未分档 ' + untiered : '') + '</b></div>' : '') +
+        (staleCnt ? '<div class="stat-line"><span>估值待重估</span><b class="down">' + staleCnt + ' 家</b></div>' : '') +
+        (valPos > 0 ? '<div class="stat-line"><span>持仓市值</span><b>' + V.fmtMoney(valMv) + '</b></div>' +
+        '<div class="stat-line"><span>浮动盈亏</span><b class="' + (valPnl >= 0 ? 'up' : 'down') + '">' + V.fmtMoney(valPnl) + ' (' + V.fmtPct(valCost > 0 ? valPnl/valCost*100 : 0) + ')</b></div>' : '<div class="stat-line muted">暂无持仓</div>') + '</div>';
+    } else {
+      h += '<div class="card"><div class="sec-title"><h2>📈 投资研究</h2>' +
+        '<button class="btn ghost sm" onclick="location.href=\'invest.html\'">进入 →</button></div>' +
+        '<div class="stat-line"><span>待击球 · 估值 · 财报 · 行业 · 宏观</span><b>独立应用</b></div></div>';
+    }
     h += '<div class="card"><div class="sec-title"><h2>📌 快速入口</h2></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn ghost sm" data-action="nav" data-view="fitness">🏋️ 减脂塑形</button>' +
       '<button class="btn ghost sm" data-action="nav" data-view="job">💼 求职准备</button>' +
       '<button class="btn ghost sm" data-action="nav" data-view="reading">📚 阅读笔记</button>' +
       '<button class="btn ghost sm" data-action="nav" data-view="side">💡 副业探索</button>' +
-      '<button class="btn ghost sm" data-action="nav" data-view="valuation">📈 公司估值</button></div></div>';
+      '<button class="btn ghost sm" onclick="location.href=\'invest.html\'">📈 投资研究</button></div></div>';
     h += '</div>';
 
     // 今日聚焦 + 灵感速记

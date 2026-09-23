@@ -151,7 +151,7 @@ def load_targets_from_csv(path):
 
 
 def scan_from_json(json_path):
-    """从 goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, 公司名), ...]。
+    """从 data/goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, 公司名), ...]。
     优先用于 --auto：能覆盖 JSON 里所有公司（而不只是已有 CSV 的公司）。"""
     if not os.path.exists(json_path):
         return []

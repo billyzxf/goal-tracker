@@ -245,13 +245,20 @@ class EastmoneyClient:
 
     def basic_orginfo(self, codes):
         """批量查公司基础资料/行业分类（RPT_F10_BASIC_ORGINFO）。
+
         codes: 带后缀的股票代码列表，如 ['601138.SH','300308.SZ']。
-        返回 {code6: {industry, board}}；industry 为东财三级行业第一级（如"电子"），board 为市场（如"上交所主板A股"）。"""
+        返回 {code6: {industry, industryL2, industryL3, industryPath, board}}：
+          - industry     一级行业（如"电子"，保持与旧数据兼容）
+          - industryL2   二级行业（如"半导体"）
+          - industryL3   三级行业（如"集成电路制造"）
+          - industryPath 完整路径（如"电子-半导体-集成电路制造"）
+          - board        市场（如"上交所主板A股"）
+        BOARD_NAME_LEVEL 本身即「一级-二级-三级」（申万口径），旧版只取第一级导致分类过粗。
+        """
         out = {}
         # 分批（单批 ≤ 50）
         for i in range(0, len(codes), 50):
             batch = codes[i:i + 50]
-            code6s = [str(c).split('.')[0] for c in batch]
             filt = '(SECUCODE in ("%s"))' % '","'.join(batch)
             params = {
                 'reportName': 'RPT_F10_BASIC_ORGINFO',
@@ -271,9 +278,12 @@ class EastmoneyClient:
                 code6 = str(r.get('SECUCODE') or '').split('.')[0]
                 if not code6:
                     continue
-                lvl = (r.get('BOARD_NAME_LEVEL') or '').split('-')[0].strip()
+                parts = [p.strip() for p in (r.get('BOARD_NAME_LEVEL') or '').split('-') if p.strip()]
                 out[code6] = {
-                    'industry': lvl or '',
+                    'industry':     parts[0] if len(parts) > 0 else '',
+                    'industryL2':   parts[1] if len(parts) > 1 else '',
+                    'industryL3':   parts[2] if len(parts) > 2 else '',
+                    'industryPath': '-'.join(parts),
                     'board': (r.get('SECURITY_TYPE') or '').strip(),
                 }
         return out

@@ -1,5 +1,5 @@
 /* ================= 财报跟踪（earnings） =================
- * 跟踪财报披露后的最新财务数据，用于筛选「财报超预期」的公司。
+ * 跟踪财报披露后的最新财务数据，用于筛选财务质量与增长兼具的公司。
  *
  * 数据来源：scripts/fetch_earnings.py 生成的汇总 CSV
  *   data/earnings/财报跟踪_YYYYMMDD.csv
@@ -7,7 +7,7 @@
  *
  * 功能：
  *   - 按每个指标排序（点击列头，营收同比/扣非净利同比/营收/净利…）
- *   - 剔除营收同比 < 20% 的公司（默认开启，可切换）
+ *   - 剔除营收同比 < 40% 的公司（默认关闭，可手动开启）
  *   - 行业 / 板块 / 林奇类型标签筛选，区分公司
  *   - 展示披露日期，跟踪最近披露的财报
  *   - 与估值模块联动：未跟踪的公司可「➕ 加入估值」（带出行业/板块/林奇类型），
@@ -32,16 +32,9 @@
     { key:'资本开支', label:'资本开支', unit:'亿', type:'num',   sortable:true },
     { key:'ROE',      label:'ROE',      unit:'%',  type:'pct',    sortable:true },
     { key:'毛利率',   label:'毛利率',   unit:'%',  type:'pct',    sortable:true },
-    // —— 当年一致预期（财报发布年份），用于判断财报是否超预期 ——
-    { key:'预期营收', label:'预期营收', unit:'亿', type:'num',    sortable:true, group:'一致预期' },
-    { key:'预期净利', label:'预期净利', unit:'亿', type:'num',    sortable:true, group:'一致预期' },
-    { key:'预期营收同比', label:'预期营收同比', unit:'%', type:'pct', sortable:true, group:'一致预期' },
-    { key:'预期净利同比', label:'预期净利同比', unit:'%', type:'pct', sortable:true, group:'一致预期' },
-    // —— 超预期判定（实际 vs 一致预期，单位 %）——
-    { key:'超预期', label:'超预期', unit:'%', type:'beat', sortable:true },
   ];
   const REVENUE_YOY_KEY = '营收同比';
-  const MIN_REVENUE_YOY = 20;          // 默认剔除营收同比 <20%
+  const MIN_REVENUE_YOY = 40;          // 营收同比过滤阈值（默认关闭，开启后剔除 <40%）
 
   // 行业配色（与 valuation 模块一致，独立维护避免跨模块耦合）
   const VAL_INDUSTRIES = [
@@ -68,6 +61,12 @@
 
   // 从 DB 里读数据
   function dataRows(){ return DB.earnings.rows; }
+
+  // 统一行情快照（公司估值「⬆ 导入股价」写入 DB.quotes，全站共用）：按代码取现价/涨幅
+  function quoteOf(code){
+    const c6 = (String(code || '').match(/(\d{6})/) || [])[1] || '';
+    return (c6 && DB.quotes && DB.quotes[c6]) || null;
+  }
 
   // 最近一次渲染过滤+排序后的公司列表（供「⬇ 导出 CSV」使用）
   let lastList = [];
@@ -154,16 +153,11 @@
 
   // 取某行某指标的可比较数值
   //  - '#名称' → 自定义指标（递归求值）
-  //  - '超预期' → 计算值：实际营收同比 - 预期营收同比
   //  - 其他   → CSV 列数值化
   function metricVal(row, key){
     if(typeof key === 'string' && key.charAt(0) === '#'){
       const def = getCustomMetrics().find(d => customKey(d.name) === key);
       return def ? computeCustom(row, def) : null;
-    }
-    if(key === '超预期'){
-      const a = num(row['营收同比']), e = num(row['预期营收同比']);
-      return (a != null && e != null) ? a - e : null;
     }
     return num(row[key]);
   }
@@ -219,13 +213,19 @@
   const RULE_MAP = {};
   PRESETS.forEach(p => p.rules.forEach((rl, i) => { RULE_MAP[p.id + ':' + i] = { preset: p, rule: rl }; }));
   function activeRuleIds(){ return state.earnPresetRules || []; }
+  // 全部规则 id（默认值 / 「全选」按钮共用，避免两处硬编码）
+  function allRuleIds(){ return PRESETS.flatMap(p => p.rules.map((_, i) => p.id + ':' + i)); }
 
   // ---- 渲染 ----
   function renderEarnings(){
+    // L1 真实性默认全选：进入模块即只展示通过真实性筛选的公司，避免一进来就渲染全部公司；
+    // 用户手动调整（取消部分规则）后不再重置，仅在「清空」数据时恢复默认。
+    if(state.earnPresetRules == null) state.earnPresetRules = allRuleIds();
     const rows = dataRows();
     let h = header('📊 财报跟踪',
-      '按披露日期跟踪财报后的最新财务数据，筛选超预期公司 · 共 ' + rows.length + ' 家',
+      '按披露日期跟踪财报后的最新财务数据，筛选优质增长公司 · 共 ' + rows.length + ' 家',
       '<button class="btn ghost sm" data-action="earn.import" title="导入财报跟踪 CSV（data/earnings/财报跟踪_YYYYMMDD.csv），由 scripts/fetch_earnings.py 生成">⬆ 导入财报 CSV</button>' +
+      '<button class="btn ghost sm" data-action="val.importPrices" title="导入行情 CSV（fetch_prices.py 生成），与「公司估值」共用同一入口：一次更新全站现价/涨幅/本月涨幅（财报跟踪·行业研究·公司估值三处同步生效）">⬆ 导入股价</button>' +
       '<button class="btn ghost sm" data-action="earn.export" title="导出当前满足全部筛选条件的公司及指标为 CSV，可重新导入">⬇ 导出 CSV</button>' +
       '<button class="btn ghost sm" data-action="earn.exportCompanies" title="将满足筛选条件的公司导出为公司列表 CSV（市场/板块/行业/林奇类型），可直接到「公司估值」点「⬆ 导入公司列表」批量添加">⬇ 导出公司列表</button>' +
       '<button class="btn ghost sm" data-action="earn.clear" title="清空已导入的财报数据">🗑 清空</button>');
@@ -243,7 +243,14 @@
     const kw = String(state.earnKw || '').trim().toLowerCase();
     if(kw) list = list.filter(r => kwMatch(r['公司名称'], kw) || kwMatch(r['股票代码'], kw));
     if(state.earnIndustries && state.earnIndustries.length) list = list.filter(r => state.earnIndustries.includes(r['行业']));
+    if(state.earnIndustriesL2 && state.earnIndustriesL2.length) list = list.filter(r => state.earnIndustriesL2.includes(r['行业二级']));
+    if(state.earnIndustriesL3 && state.earnIndustriesL3.length) list = list.filter(r => state.earnIndustriesL3.includes(r['行业三级']));
     if(state.earnBoards && state.earnBoards.length) list = list.filter(r => state.earnBoards.includes(r['板块']));
+    // 临时代码锁定（来自行业详情「在财报跟踪中查看」）：按 6 位代码精确过滤，覆盖其它行业/名称筛选的匹配差异
+    const earnLock = state.earnLock;
+    if(earnLock && earnLock.codes && earnLock.codes.length){
+      list = list.filter(r => earnLock.codes.some(c => String(r['股票代码']).indexOf(c) >= 0));
+    }
     if(state.earnFilterLow) list = list.filter(r => {
       const v = num(r[REVENUE_YOY_KEY]);
       return v != null && v >= MIN_REVENUE_YOY;
@@ -259,7 +266,6 @@
     }
 
     // ---- 统计概览 ----
-    const withConsensus = rows.filter(r => num(r['预期营收']) != null || num(r['预期净利']) != null).length;
     // L1 真实性卡片：数量随勾选的规则组合变化（AND 叠加，与表格筛选逻辑一致）
     const ruleIds = activeRuleIds();
     const l1Rows = ruleIds.length
@@ -271,7 +277,6 @@
     h += '<div class="val-summary-grid">' +
       '<div class="val-stat"><div class="vs-label">跟踪公司</div><div class="vs-value">' + rows.length + '</div></div>' +
       '<div class="val-stat"><div class="vs-label">🛡️ L1 真实性</div><div class="vs-value up">' + l1Rows.length + '</div><div class="vs-sub">' + l1Sub + '</div></div>' +
-      '<div class="val-stat"><div class="vs-label">有当年一致预期</div><div class="vs-value">' + withConsensus + '</div><div class="vs-sub">可判断超预期</div></div>' +
       '<div class="val-stat"><div class="vs-label">有披露日期</div><div class="vs-value">' + rows.filter(r => r['披露日期']).length + '</div></div>' +
       '<div class="val-stat"><div class="vs-label">✅ 当前展示</div><div class="vs-value up">' + list.length + '</div><div class="vs-sub">满足全部筛选条件 · ' + Math.round(list.length / rows.length * 100) + '%</div></div>' +
       '</div>';
@@ -282,10 +287,41 @@
     // ---- 筛选 chips：行业（多选，点击切换选中，再点取消；不选 = 全部）----
     const industries = [...new Set(rows.map(r => r['行业']).filter(Boolean))];
     const selInd = state.earnIndustries || [];
+    if(earnLock && earnLock.codes && earnLock.codes.length){
+      h += '<div class="chips" style="margin:10px 0 8px">' +
+        '<span class="chip active" style="cursor:default" title="来自行业详情「在财报跟踪中查看该行业」的临时锁定，按 6 位代码精确匹配">🔒 临时锁定：' + esc(earnLock.label || '该行业') + '（' + earnLock.codes.length + ' 家）</span>' +
+        '<button class="chip" data-action="earn.lockClear">✕ 清除锁定</button>' +
+        '</div>';
+    }
     h += '<div class="chips" style="margin:12px 0 8px">' +
       '<button class="chip ' + (selInd.length ? '' : 'active') + '" data-action="earn.fIndustryClear">全部行业</button>' +
       industries.map(i => '<button class="chip ' + (selInd.includes(i) ? 'active' : '') + '" data-action="earn.fIndustry" data-v="' + esc(i) + '">' + i + '</button>').join('') +
       '</div>';
+    // 二/三级行业级联（选中上级后展开下级，细化到细分行业，避免一次平铺几百个 chip）
+    const selInd2 = state.earnIndustriesL2 || [];
+    const selInd3 = state.earnIndustriesL3 || [];
+    if(selInd.length){
+      const scope2 = rows.filter(r => selInd.includes(r['行业']));
+      const pool2 = [...new Set(scope2.map(r => r['行业二级']).filter(Boolean))].sort();
+      if(pool2.length){
+        h += '<div class="chips chips-sub" style="margin:-4px 0 8px">' +
+          '<span class="chips-label">二级</span>' +
+          '<button class="chip ' + (selInd2.length ? '' : 'active') + '" data-action="earn.fIndustryL2Clear">全部</button>' +
+          pool2.map(i => '<button class="chip ' + (selInd2.includes(i) ? 'active' : '') + '" data-action="earn.fIndustryL2" data-v="' + esc(i) + '">' + esc(i) + '</button>').join('') +
+          '</div>';
+      }
+    }
+    if(selInd2.length){
+      const scope3 = rows.filter(r => selInd2.includes(r['行业二级']));
+      const pool3 = [...new Set(scope3.map(r => r['行业三级']).filter(Boolean))].sort();
+      if(pool3.length){
+        h += '<div class="chips chips-sub" style="margin:-4px 0 8px">' +
+          '<span class="chips-label">三级</span>' +
+          '<button class="chip ' + (selInd3.length ? '' : 'active') + '" data-action="earn.fIndustryL3Clear">全部</button>' +
+          pool3.map(i => '<button class="chip ' + (selInd3.includes(i) ? 'active' : '') + '" data-action="earn.fIndustryL3" data-v="' + esc(i) + '">' + esc(i) + '</button>').join('') +
+          '</div>';
+      }
+    }
 
     // ---- 筛选 chips：板块（多选，点击切换选中，再点取消；不选 = 全部）----
     const boards = [...new Set(rows.map(r => r['板块']).filter(Boolean))];
@@ -312,22 +348,23 @@
       }).join('') +
       '</div>';
     if(activeIds.length){
-      h += '<div class="hint" style="margin:4px 2px 8px;line-height:1.9">当前组合（AND 叠加）：<br>' +
+      // 默认全选后这段说明会一直出现，折叠起来保持页面紧凑（点开可看完整口径）
+      h += '<details class="earn-rule-detail"><summary>当前组合：' + activeIds.length + ' 条规则 AND 叠加（点开查看口径）</summary>' +
         activeIds.map(id => '✓ ' + esc(RULE_MAP[id].rule.name) + ' <span style="opacity:.6">— ' + esc(RULE_MAP[id].rule.why) + '</span>').join('<br>') +
-        '</div>';
+        '</details>';
     }
 
-    // ---- 剔除营收同比<20% 开关 + 自定义数值筛选（紧凑单行）----
+    // ---- 营收同比开关（默认关，开启后剔除 <MIN_REVENUE_YOY%）+ 自定义数值筛选（紧凑单行）----
     const cf = state.earnCustomFilters || [];
     const isFieldMode = state.earnFilterMode === 'field';
     const OP_LABEL = { '>=':'≥', '<=':'≤', '>':'>', '<':'<' };
-    const numMetrics = METRICS.filter(m => ['num','pct','beat'].includes(m.type));
-    // 可选指标 = 内置数值列 + 自定义指标（含超预期计算列），供筛选下拉使用
+    const numMetrics = METRICS.filter(m => ['num','pct'].includes(m.type));
+    // 可选指标 = 内置数值列 + 自定义指标，供筛选下拉使用
     const cmDefs = getCustomMetrics();
     const metricOptions = numMetrics.concat(cmDefs.map(d => ({ key: customKey(d.name), label: d.name })));
     const labelOf = key => { const m = metricOptions.find(x => x.key === key); return m ? m.label : key; };
     h += '<div class="earn-filterbar">' +
-      '<button class="chip ' + (state.earnFilterLow ? 'active' : '') + '" data-action="earn.toggleLow" title="默认剔除营收同比低于 ' + MIN_REVENUE_YOY + '% 的公司，便于聚焦高增长标的">营收同比≥' + MIN_REVENUE_YOY + '%（' + (state.earnFilterLow ? '开' : '关') + '）</button>' +
+      '<button class="chip ' + (state.earnFilterLow ? 'active' : '') + '" data-action="earn.toggleLow" title="开启后剔除营收同比低于 ' + MIN_REVENUE_YOY + '% 的公司，便于聚焦高增长标的（默认关闭）">营收同比≥' + MIN_REVENUE_YOY + '%（' + (state.earnFilterLow ? '开' : '关') + '）</button>' +
       // 已添加的自定义条件 → 可删除的 chip
       cf.map((f, i) => '<button class="chip active" data-action="earn.delFilter" data-idx="' + i + '" title="点击移除该筛选条件">' +
         esc(labelOf(f.key)) + ' ' + esc(OP_LABEL[f.op] || f.op) + ' ' + esc(f.cmpField ? labelOf(f.value) + '（字段）' : f.value) + ' ✕</button>').join('') +
@@ -394,7 +431,16 @@
     lastList = list;   // 记录当前过滤+排序结果，供「⬇ 导出 CSV」使用
 
     if(!list.length){
-      h += '<div class="card"><div class="empty">' + (kw ? '没有匹配「' + esc(String(state.earnKw||'').trim()) + '」的公司' : '当前筛选条件下没有符合条件的公司') + '</div></div>';
+      // L1 默认全选后可能出现 0 家（如 CSV 缺列），给出原因说明与一键取消入口
+      const nowRules = activeRuleIds();
+      h += '<div class="card"><div class="empty">' +
+        (kw ? '没有匹配「' + esc(String(state.earnKw||'').trim()) + '」的公司' : '当前筛选条件下没有符合条件的公司') +
+        (nowRules.length
+          ? '<br><br><span style="font-size:12px">L1 真实性当前勾选 <b>' + nowRules.length + '</b> 条规则（AND 叠加，勾得越多越严格）。' +
+            '部分财报 CSV 缺少「销售收现 / 经营现金流」等列时会导致全部落选。</span>' +
+            '<br><button class="btn ghost sm" style="margin-top:10px" data-action="earn.clearRules">取消全部 L1 规则</button>'
+          : '') +
+        '</div></div>';
       return h;
     }
 
@@ -414,19 +460,18 @@
         if(state.earnSort === m.key){
           arrow = state.earnSortDir === 'asc' ? ' ▲' : ' ▼';
         }
-        // 分组说明：一致预期列 / 超预期列给出提示
+        // 列头提示：自定义指标给出算式，其余提示可排序
         const def = m.type === 'calc' ? cmDefs.find(d => customKey(d.name) === m.key) : null;
-        let tip = '';
-        if(def) tip = '自定义指标：' + labelOf(def.a) + ' ' + (CM_OP_LABEL[def.op] || def.op) + ' ' + labelOf(def.b);
-        else if(m.group === '一致预期') tip = '当年一致预期（券商预测均值）';
-        else if(m.key === '超预期') tip = '实际营收同比 - 预期营收同比（>0 表示财报超预期）';
-        else tip = '点击按此列排序';
+        const tip = def
+          ? '自定义指标：' + labelOf(def.a) + ' ' + (CM_OP_LABEL[def.op] || def.op) + ' ' + labelOf(def.b)
+          : '点击按此列排序';
         const sorter = m.sortable ? ' data-action="earn.sort" data-key="' + esc(m.key) + '" style="cursor:pointer" title="' + esc(tip) + '"' : '';
-        const headCls = m.group === '一致预期' ? ' style="border-left:2px solid var(--indigo);"'
-          : (m.key === '超预期' ? ' style="border-left:2px solid var(--pink);"'
-          : (m.group === '自定义' ? ' style="border-left:2px solid var(--amber);"' : ''));
+        const headCls = m.group === '自定义' ? ' style="border-left:2px solid var(--amber);"' : '';
         return '<th class="num"' + headCls + ' ' + sorter + '>' + th + arrow + '</th>';
       }).join('') +
+      '<th class="num" title="行情快照（「⬆ 导入股价」更新，全站共用）">现价</th>' +
+      '<th class="num" title="当日涨跌幅（「⬆ 导入股价」更新）">涨幅</th>' +
+      '<th class="num" title="本月累计涨跌幅（「⬆ 导入股价」更新）">本月</th>' +
       '<th style="border-left:2px solid var(--green)">操作</th>' +
       '</tr></thead><tbody>';
 
@@ -434,13 +479,20 @@
       const name = r['公司名称'] || r['股票代码'] || '—';
       const ticker = r['股票代码'] || '';
       const industry = r['行业'] || '';
+      const industryL2 = r['行业二级'] || '';
+      const industryL3 = r['行业三级'] || '';
       const board = r['板块'] || '';
       const lynch = r['林奇类型'] || '';
+      // 行业列：申万一级/二级/三级拼接（与分类地图同源，自动去重罗马数字后缀），一级彩色徽章 + 细分级灰色徽章
+      const ipath = swPath(ticker, r);
+      const irest = swRest(ticker, r);
       h += '<tr>' +
-        '<td><b>' + esc(name) + '</b><div class="muted" style="font-size:11px">' + esc(ticker) + '</div></td>' +
+        '<td><b>' + esc(name) + '</b>' +
+          ((window.ValHelpers && ValHelpers.ratingBadgeByCode) ? ValHelpers.ratingBadgeByCode(ticker) : '') +
+          '<div class="muted" style="font-size:11px">' + esc(ticker) + '</div></td>' +
         '<td>' +
-          (industry ? '<span class="badge ' + (INDUSTRY_CLS[industry] || 'gray') + '">' + esc(industry) + '</span>' : '') +
-          (board ? ' <span class="badge ' + (BOARD_CLS[board] || 'gray') + '">' + esc(board) + '</span>' : '') +
+          (industry ? '<span class="badge ' + (INDUSTRY_CLS[industry] || 'gray') + '" title="申万行业：' + esc(ipath) + '">' + esc(industry) + '</span>' : '') +
+          (irest ? ' <span class="badge gray" title="申万行业：' + esc(ipath) + '">' + esc(irest) + '</span>' : '') +
           (lynch ? ' <span class="badge ' + (LYNCH_CLS[lynch] || 'gray') + '" title="林奇分类：' + esc(lynch) + '">' + esc(lynch) + '</span>' : '') +
         '</td>';
       cols.forEach(m => {
@@ -458,18 +510,6 @@
             const str = Math.abs(v) < 100 ? v.toFixed(2) : v.toFixed(1);
             h += '<td class="num" title="' + esc(m.label) + '">' + str + '</td>';
           }
-        } else if(m.type === 'beat'){
-          // 超预期判定：实际营收同比 vs 预期营收同比（百分点差）
-          const actYoy = num(r['营收同比']);
-          const expYoy = num(r['预期营收同比']);
-          if(actYoy == null || expYoy == null){
-            h += '<td class="num"><span class="muted">—</span></td>';
-          } else {
-            const diff = actYoy - expYoy;
-            const cls = diff > 0 ? 'up' : 'down';
-            const flag = diff > 0 ? '▲' : (diff < 0 ? '▼' : '');
-            h += '<td class="num ' + cls + '" title="实际营收同比 - 预期营收同比">' + flag + (diff > 0 ? '+' : '') + diff.toFixed(1) + '%</td>';
-          }
         } else {
           const n = num(raw);
           if(n == null){ h += '<td class="num"><span class="muted">—</span></td>'; return; }
@@ -484,6 +524,28 @@
           }
         }
       });
+      // 行情两列：统一行情快照（DB.quotes），无数据显示 —
+      const gq = quoteOf(ticker);
+      if(gq && gq.price != null){
+        h += '<td class="num" style="white-space:nowrap"><b>' + Number(gq.price).toFixed(2) + '</b>' +
+          (gq.date ? '<div class="muted" style="font-size:10px">' + esc(gq.date) + '</div>' : '') + '</td>';
+      } else {
+        h += '<td class="num"><span class="muted">—</span></td>';
+      }
+      if(gq && gq.pct != null){
+        const p = Number(gq.pct);
+        h += '<td class="num"><span class="' + (p > 0 ? 'up' : (p < 0 ? 'down' : 'muted')) + '" style="font-size:12px;white-space:nowrap">' +
+          (p > 0 ? '▲ ' : (p < 0 ? '▼ ' : '')) + Math.abs(p).toFixed(2) + '%</span></td>';
+      } else {
+        h += '<td class="num"><span class="muted">—</span></td>';
+      }
+      if(gq && gq.monthPct != null){
+        const mp = Number(gq.monthPct);
+        h += '<td class="num"><span class="' + (mp > 0 ? 'up' : (mp < 0 ? 'down' : 'muted')) + '" style="font-size:12px;white-space:nowrap">' +
+          (mp > 0 ? '▲ ' : (mp < 0 ? '▼ ' : '')) + Math.abs(mp).toFixed(2) + '%</span></td>';
+      } else {
+        h += '<td class="num"><span class="muted">—</span></td>';
+      }
       // 操作列：已跟踪 → 跳转估值详情；未跟踪 → 一键加入估值关注列表
       const known = findValCompany(ticker);
       if(known){
@@ -530,7 +592,7 @@
 
   // ---- 导出 CSV（当前满足全部筛选条件的公司 + 指标）----
   // 导出文件含 # 注释头与「股票代码」表头，可直接重新「⬆ 导入财报 CSV」
-  // 导出列 = 基础信息列 + 全部指标列（含超预期）+ 自定义指标列
+  // 导出列 = 基础信息列 + 全部指标列 + 自定义指标列
   const EXPORT_BASE = ['股票代码', '公司名称', '行业', '板块', '林奇类型', '披露日期', '报告期', '季度'];
   function exportCsv(){
     if(!lastList.length){ toast('⚠️ 当前没有满足筛选条件的公司'); return; }
@@ -553,7 +615,7 @@
 
   // ---- 导出为公司估值模块可直接导入的公司列表 CSV（满足当前全部筛选条件的公司）----
   // 列格式与估值模块「⬆ 导入公司列表」兼容；同时可作为 fetch_financial.py --from-csv 的输入
-  const VAL_LIST_COLS = ['股票代码', '公司名称', '市场', '板块', '行业', '林奇类型'];
+  const VAL_LIST_COLS = ['股票代码', '公司名称', '市场', '板块', '行业', '行业二级', '行业三级', '林奇类型'];
   function exportCompaniesForVal(){
     if(!lastList.length){ toast('⚠️ 当前没有满足筛选条件的公司'); return; }
     const lines = ['# GoalTracker 公司列表（财报跟踪筛选 ' + lastList.length + ' 家，导出于 ' + dateStr() + '）',
@@ -619,7 +681,8 @@
         if(confirm('确认清空所有已导入的财报跟踪数据？')){
           DB.earnings.rows = []; DB.earnings.importedAt = null;
           state.earnSort = '披露日期'; state.earnSortDir = 'desc';
-          state.earnFilterLow = true;
+          state.earnFilterLow = false;
+          state.earnPresetRules = allRuleIds();   // 恢复默认：L1 真实性全选
           state.earnCustomFilters = [];
           state.earnIndustries = []; state.earnBoards = [];
           state.earnKw = '';
@@ -643,9 +706,29 @@
         const set = new Set(state.earnIndustries || []);
         set.has(v) ? set.delete(v) : set.add(v);
         state.earnIndustries = [...set];
+        state.earnIndustriesL2 = [];   // 一级变化时重置下级，保持级联一致
+        state.earnIndustriesL3 = [];
         render();
       },
-      'earn.fIndustryClear': () => { state.earnIndustries = []; render(); },
+      'earn.fIndustryClear': () => { state.earnIndustries = []; state.earnIndustriesL2 = []; state.earnIndustriesL3 = []; render(); },
+      'earn.fIndustryL2': el => {
+        const v = el.dataset.v;
+        const set = new Set(state.earnIndustriesL2 || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.earnIndustriesL2 = [...set];
+        state.earnIndustriesL3 = [];
+        render();
+      },
+      'earn.fIndustryL2Clear': () => { state.earnIndustriesL2 = []; state.earnIndustriesL3 = []; render(); },
+      'earn.fIndustryL3': el => {
+        const v = el.dataset.v;
+        const set = new Set(state.earnIndustriesL3 || []);
+        set.has(v) ? set.delete(v) : set.add(v);
+        state.earnIndustriesL3 = [...set];
+        render();
+      },
+      'earn.fIndustryL3Clear': () => { state.earnIndustriesL3 = []; render(); },
+      'earn.lockClear': () => { state.earnLock = null; render(); },
       'earn.fBoard': el => {
         // 多选：点击选中，再次点击取消
         const v = el.dataset.v;
@@ -664,10 +747,7 @@
         state.earnPresetRules = [...set];
         render();
       },
-      'earn.allRules': () => {
-        state.earnPresetRules = PRESETS.flatMap(p => p.rules.map((_, i) => p.id + ':' + i));
-        render();
-      },
+      'earn.allRules': () => { state.earnPresetRules = allRuleIds(); render(); },
       'earn.clearRules': () => { state.earnPresetRules = []; render(); },
       // —— 自定义数值筛选（字段+运算符+数值，可叠加）——
       'earn.addFilter': () => {

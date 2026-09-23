@@ -12,6 +12,26 @@
  * 模块约定：modules/*.js 通过 IIFE 调用 window.Register.module({...})
  * ===================================================================== */
 
+/* ================= 应用命名空间（拆分入口用） =================
+ * goal 与 invest 两个独立入口共享同一份 core.js；各入口在引入 core.js 之前
+ * 用 window.GT_APP 注入自己的库名 / 存储键 / 导出文件名 / 默认视图，
+ * 实现数据存储与备份文件的完全隔离。未注入时使用默认值（goal 目标入口）。
+ * 主题偏好 THEME_KEY 固定共享，保证两个入口深色模式一致。
+ */
+const GT_APP_DEFAULT = {
+  ns: 'goalTracker',        // localStorage 键 / 导出时间戳前缀
+  db: 'goalTrackerDB',      // IndexedDB 库名
+  file: 'goal-tracker-data.json',  // 导出 / 同步盘文件名
+  def: 'dashboard',         // 默认视图
+  self: 'index.html',       // 本入口文件
+  peer: 'invest.html',      // 对端入口文件
+  peerLabel: '投资研究',      // 对端入口按钮文案
+  peerIco: '📈',
+  navTitle: 'GoalTracker',              // 子视图标题后缀
+  docTitle: 'GoalTracker · 目标追踪',    // 无视图时的标题
+};
+const APP = Object.assign({}, GT_APP_DEFAULT, window.GT_APP || {});
+
 /* ================= 工具函数 ================= */
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -52,6 +72,51 @@ function kwMatch(text, kw){
   if(t.includes(kw)) return true;
   const py = pinyinPair(t);
   return (py[0] && py[0].includes(kw)) || (py[1] && py[1].includes(kw));
+}
+
+/* ================= 申万行业路径（各模块公司列表统一的行业展示） =================
+ * 来源唯一：全市场分类地图 DB.industryMap（scripts/fetch_industry_map.py 生成，
+ * 行业研究模块「⬆ 导入分类地图」导入），按股票代码前 6 位匹配；
+ * 地图未覆盖 / 未导入时回退传入对象自带的行业字段（财报行中文键 / 估值公司英文键）。
+ * swPath(code, fb) → 「一级 / 二级 / 三级」；下级是「上级 + 罗马数字」的重复命名
+ * （如 银行 → 银行Ⅱ）自动并掉，避免路径拖长；swRest 为去掉一级后的剩余层级。
+ */
+function swMapIdx(db){
+  db = db || DB;
+  const rows = db && db.industryMap && Array.isArray(db.industryMap.rows) ? db.industryMap.rows : null;
+  if(!rows) return {};                             // 尚未导入地图：空结果（无需缓存，开销为零）
+  if(swMapIdx.rows === rows) return swMapIdx.m;    // rows 引用未变则复用缓存，重新导入（整体替换）后自动失效
+  const m = {};
+  rows.forEach(r => {
+    const c6 = (String(r.code || '').match(/(\d{6})/) || [])[1];
+    if(c6) m[c6] = r;
+  });
+  swMapIdx.m = m;
+  swMapIdx.rows = rows;
+  return m;
+}
+// 下级与上级重复：同名，或仅差罗马数字后缀（银行 / 银行Ⅱ）
+function swLvDup(child, parent){
+  if(!child || !parent) return false;
+  if(child === parent) return true;
+  if(!child.startsWith(parent)) return false;
+  return /^[ⅠⅡⅢ]*$/.test(child.slice(parent.length));
+}
+function swPath(code, fb){
+  fb = fb || {};
+  const c6 = (String(code || '').match(/(\d{6})/) || [])[1] || '';
+  const mr = c6 ? swMapIdx()[c6] : null;
+  const l1 = String((mr && mr.sw1) || fb.industry || fb['行业'] || '').trim();
+  const l2 = String((mr && mr.sw2) || fb.industryL2 || fb['行业二级'] || '').trim();
+  const l3 = String((mr && mr.sw3) || fb.industryL3 || fb['行业三级'] || '').trim();
+  const parts = [];
+  if(l1) parts.push(l1);
+  if(l2 && !swLvDup(l2, l1) && !parts.includes(l2)) parts.push(l2);
+  if(l3 && !parts.includes(l3) && !swLvDup(l3, parts[parts.length - 1])) parts.push(l3);
+  return parts.join(' / ');
+}
+function swRest(code, fb){
+  return swPath(code, fb).split(' / ').slice(1).join(' / ');
 }
 
 /* ================= 深色模式 =================
@@ -160,7 +225,7 @@ function registerModule(def){
 }
 
 /* ================= 数据 ================= */
-const LS_KEY = 'goalTracker.v1';
+const LS_KEY = APP.ns + '.v1';
 function seed(){
   const s = {};
   MODULE_ORDER.forEach(m => { if(m.seed) s[m.view] = m.seed(); });
@@ -174,7 +239,11 @@ function ensure(db){
     if(!m.seed) return;
     const sv = s[m.view];
     if(!db[m.view]) db[m.view] = sv;
-    if(m.ensure) m.ensure(db, sv);
+    // 单模块迁移失败只跳过该模块并在控制台报错；
+    // 绝不能让异常向上冒泡——loadAsync 里 ensure 失败会一路回退到 seed()，
+    // 之后任何一次 save() 都会用种子数据覆盖 IndexedDB，等于清空用户全部数据。
+    try { if(m.ensure) m.ensure(db, sv); }
+    catch(e){ console.error('数据迁移异常(' + m.view + '):', e); }
   });
   db.meta = db.meta || {};
   if(!db.meta.schemaVersion) db.meta.schemaVersion = SCHEMA_VERSION;
@@ -189,7 +258,7 @@ function hasRequiredModules(d){
 }
 
 /* ================= 数据存储（IndexedDB 为主，localStorage 兜底） ================= */
-function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open('goalTrackerDB', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open(APP.db, 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function idbSet(k, v){ const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
 async function idbGet(k){ const db = await idbOpen(); return new Promise((res, rej) => { const rq = db.transaction('kv').objectStore('kv').get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
 
@@ -204,8 +273,8 @@ async function loadAsync(){
   } catch(e){ console.warn('IndexedDB 读取失败:', e); }
 
   // 2. 尝试 fetch 同目录 JSON（首次使用 / 新设备）
-  //    优先读应用根目录 goal-tracker-data.json，其次读 data/ 子目录（scripts 脚本实际写入的位置）
-  for(const p of ['./goal-tracker-data.json', './data/goal-tracker-data.json']){
+  //    优先读应用根目录（如 goal-tracker-data.json / invest-data.json），其次读 data/ 子目录（scripts 脚本实际写入的位置）
+  for(const p of ['./' + APP.file, './data/' + APP.file]){
     try {
       const resp = await fetch(p + '?t=' + Date.now());
       if(resp.ok){
@@ -262,8 +331,8 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
  * 策略：记录"上次导出时间"，超过 EXPORT_REMIND_DAYS 天未导出且有过改动时，显示橙色提醒。
  */
 const EXPORT_REMIND_DAYS = 3;
-const LAST_EXPORT_KEY = 'goalTracker.lastExport';
-const EXPORT_FILENAME = 'goal-tracker-data.json'; // 固定文件名，方便直接覆盖同步盘中的原 JSON
+const LAST_EXPORT_KEY = APP.ns + '.lastExport';
+const EXPORT_FILENAME = APP.file; // 固定文件名，方便直接覆盖同步盘中的原 JSON
 function lastExportTs(){ return parseInt(localStorage.getItem(LAST_EXPORT_KEY) || '0', 10) || 0; }
 function sinceLastExport(){ // 返回距上次导出的毫秒数；从未导出返回 null
   const ts = lastExportTs();
@@ -315,9 +384,9 @@ function refreshBackupReminder(){
  *   · 绝不自动覆盖——自动覆盖会丢掉本机尚未导出的改动；
  *   · 忽略过某一版后，该版本不再打扰（按远端 meta.updated 记名）。
  */
-const REMOTE_PATHS = ['./goal-tracker-data.json', './data/goal-tracker-data.json'];
-const REMOTE_DISMISS_KEY = 'goalTracker.remoteDismissed';
-const REMOTE_CHECK_KEY = 'goalTracker.remoteCheckedAt';
+const REMOTE_PATHS = ['./' + APP.file, './data/' + APP.file];
+const REMOTE_DISMISS_KEY = APP.ns + '.remoteDismissed';
+const REMOTE_CHECK_KEY = APP.ns + '.remoteCheckedAt';
 const REMOTE_MIN_GAP_MS = 30000;            // 远端需比本机新 30s 以上才算「有更新」（刚导出时两边几乎同时）
 const REMOTE_RECHECK_MS = 20 * 60 * 1000;   // 同一浏览器 20 分钟内不重复自动比对
 
@@ -400,7 +469,7 @@ async function checkRemoteData(manual){
 
   if(!found){
     remoteCandidate = null; renderRemoteBar();
-    if(manual) toast('同步盘没有可用的 goal-tracker-data.json（文件不存在 / 格式不符 / 直接用 file:// 打开页面）');
+    if(manual) toast('同步盘没有可用的 ' + APP.file + '（文件不存在 / 格式不符 / 直接用 file:// 打开页面）');
     return;
   }
   if(found.updated - localTs <= REMOTE_MIN_GAP_MS){
@@ -441,7 +510,7 @@ function renderRemoteBar(){
 /* ================= 全局状态 =================
  * 约定：模块的状态键使用「模块前缀.子键」命名（如 job.tag），避免键名冲突。
  */
-const state = { view:'dashboard', jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valIndustry:'全部', valLynchType:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null, earnSort:'披露日期', earnSortDir:'desc', earnFilterLow:true, earnIndustries:[], earnBoard:'全部' };
+const state = { view: APP.def, jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valIndustry:'全部', valLynchType:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null, earnSort:'披露日期', earnSortDir:'desc', earnFilterLow:false, earnIndustries:[], earnBoard:'全部' };
 
 /* ================= 通用渲染片段（组件） ================= */
 function ring(pct, color, size){
@@ -574,7 +643,7 @@ function viewFromHash(){
 }
 window.addEventListener('hashchange', () => {
   // hash 为空（如从 #/fitness 后退回初始页）时回落到总览
-  const v = viewFromHash() || 'dashboard';
+  const v = viewFromHash() || APP.def;
   if(v !== state.view){ state.view = v; render(); }
 });
 
@@ -621,8 +690,8 @@ $('#import-file').addEventListener('change', e => {
     try{
       const d = JSON.parse(reader.result);
       if(hasRequiredModules(d)){ DB = ensure(d); save(); render(); toast('✅ 导入成功，已覆盖当前数据'); }
-      else alert('文件格式不正确。\n\n请导入本应用导出的完整数据备份「goal-tracker-data.json」（含所有模块数据）。\n不要选财务/盈利预测/宏观的 CSV，那需要到对应模块里分别导入。');
-    }catch(err){ alert('导入失败：' + err.message + '\n\n请选择「goal-tracker-data.json」格式的 JSON 数据文件。'); }
+      else alert('文件格式不正确。\n\n请导入本应用导出的完整数据备份「' + APP.file + '」（含所有模块数据）。\n不要选财务/盈利预测/宏观的 CSV，那需要到对应模块里分别导入。');
+    }catch(err){ alert('导入失败：' + err.message + '\n\n请选择「' + APP.file + '」格式的 JSON 数据文件。'); }
     e.target.value = '';
   };
   reader.readAsText(file);
@@ -675,7 +744,7 @@ function render(){
   else { main.innerHTML = '<div class="empty">未找到视图：' + esc(state.view) + '</div>'; }
 
   // 标签页标题随视图切换；视图切换时加渐入动画
-  document.title = (mod && mod.nav) ? mod.nav.label + ' · GoalTracker' : 'GoalTracker · 目标追踪';
+  document.title = (mod && mod.nav) ? mod.nav.label + ' · ' + APP.navTitle : APP.docTitle;
   if(viewChanged){
     main.classList.remove('view-enter');
     void main.offsetWidth; // 强制 reflow，确保连续切换时动画能重新触发

@@ -90,6 +90,32 @@
     return vals.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;
   }
 
+  /* ---------- 中枢 / 减持区：手动优先 + 自动兜底 ----------
+   * 中枢：✎ 手动填的优先；未填时自动取「公司估值」最新估值价（跟随最新估值，不落库）。
+   * 减持区（止盈参考）：手动填的优先；未填时按评级给，评级越高拿得越久：
+   *   S ×1.30 / A ×1.20 / B ×1.10 / C ×1.05；未评级走默认口径 ×1.15（与触发线未评级的回退思路一致）。
+   * 自动值只参与展示与联动计算，不写入条目；一旦在 ✎/复核里填了数字即转为手动，永久锁定。 */
+  const TRIM_MULT = { S: 1.30, A: 1.20, B: 1.10, C: 1.05 };
+  const TRIM_DEFAULT_MULT = 1.15;
+  function effHub(it){
+    if(it.hub != null) return { hub: it.hub, src: 'manual' };
+    const v = latestValuation(it.ticker);
+    return (v && v.estimatedValue > 0) ? { hub: Number(v.estimatedValue), src: 'auto' } : { hub: null, src: 'none' };
+  }
+  function effTrim(it, ri){
+    if(it.trimZone != null) return { trim: it.trimZone, src: 'manual' };
+    const eh = effHub(it);
+    if(eh.hub == null) return { trim: null, src: 'none' };
+    const g = ri && ri.grade;
+    const m = (g && TRIM_MULT[g]) || TRIM_DEFAULT_MULT;
+    return { trim: Math.round(eh.hub * m * 100) / 100, src: (g && TRIM_MULT[g]) ? 'auto' : 'default' };
+  }
+  function trimTip(ri){
+    const g = ri && ri.grade;
+    const m = (g && TRIM_MULT[g]) || TRIM_DEFAULT_MULT;
+    return '未手动填写：按' + (g ? '评级 ' + g : '默认口径') + ' 中枢 ×' + m + ' 给出减持区起点（止盈参考）';
+  }
+
   /* 距买点% =（现价 − 买点上沿）/ 上沿 ×100；负数 = 已到买点 */
   function gapPct(it){
     const pi = priceInfo(it);
@@ -132,6 +158,11 @@
     it.events.push({ date: dateStr(), text: text });
     if(it.events.length > 50) it.events = it.events.slice(-50);
     it.updatedAt = dateStr();
+  }
+  /* 评级联动：取估值模块的评级参数（等级 / 仓位权限 / 击球区倍数）；未评级返回 null */
+  function ratingInfo(it){
+    if(!(window.ValHelpers && ValHelpers.ratingCapByTicker)) return null;
+    return ValHelpers.ratingCapByTicker(it.ticker);
   }
   function todayWarn(it){
     const d = daysTo(it.nextReview);
@@ -181,7 +212,7 @@
 
     let h = '<div class="card port-panel">' +
       '<div class="pp-head"><h3>⚖ 组合仓位</h3>' +
-      '<span class="muted">目标架构 核心候选 <b>60%</b>（单票 ≤15%） / 轮动 <b>40%</b>（单票 ≤8%） · 持仓取自「📈 公司估值 → 投资买卖记录」</span></div>' +
+      '<span class="muted">目标架构 核心候选 <b>60%</b>（单票 ≤15%） / 轮动 <b>40%</b>（单票 ≤8%） · 持仓取自「📈 公司估值 → 投资买卖记录」 · 已评级公司单票上限 = min(仓位池, 评级权限)，评级 D 禁入</span></div>' +
       // 账户总资金：仓位占比的分母。未填时退化为「持仓市值合计」，只反映相对结构
       '<div class="pp-base"><label>账户总资金</label>' +
       '<input type="number" step="0.01" data-change="swing.capital" value="' + (capital > 0 ? capital : '') + '" placeholder="填入总资金（元）">' +
@@ -240,9 +271,17 @@
       '</tr></thead><tbody>';
     hs.forEach(x => {
       const pct = base > 0 ? x.mv / base * 100 : 0;
-      const cap = POOL_CAP[x.pool] != null ? POOL_CAP[x.pool] : null;
+      // 单票上限 = min(仓位池上限, 评级仓位权限)；评级 D = 禁入（上限 0）
+      const rc = (window.ValHelpers && ValHelpers.ratingCapByTicker) ? ValHelpers.ratingCapByTicker(x.ticker) : null;
+      let cap = POOL_CAP[x.pool] != null ? POOL_CAP[x.pool] : null;
+      let capNote = '';
+      if(rc){
+        if(rc.grade === 'D') cap = 0;
+        else if(cap == null || rc.posCap < cap){ cap = rc.posCap; capNote = '（评级 ' + rc.grade + '）'; }
+      }
       const over = cap != null && pct > cap;
       let tip = '';
+      if(over && rc && rc.grade === 'D') tip += '<span class="badge red" title="评级 D：禁入，按止损纪律退出">评级 D 禁入</span> ';
       if(over) tip += '<span class="badge red">超限 ' + (pct - cap).toFixed(2) + 'pp</span>';
       else if(cap != null && pct > cap * POOL_CAP_WARN) tip += '<span class="badge amber">接近上限</span>';
       if(x.pool === POOL_UNASSIGNED) tip += ' <span class="badge gray" title="该公司不在待击球台账，无法按 60/40 归类">未归类</span>';
@@ -255,7 +294,7 @@
         '<td class="num">' + x.avgCost.toFixed(2) + '</td>' +
         '<td class="num">' + money(x.mv) + '</td>' +
         '<td class="num"><b>' + pct.toFixed(2) + '%</b></td>' +
-        '<td class="num muted">' + (cap != null ? cap + '%' : '—') + '</td>' +
+        '<td class="num muted" title="' + (capNote ? '评级收紧：' + capNote.replace(/[()（）]/g, '') : '') + '">' + (cap != null ? cap + '%' + capNote : '—') + '</td>' +
         '<td class="num ' + (x.pnl >= 0 ? 'up' : 'down') + '">' + money(x.pnl) + '</td>' +
         '<td>' + (tip || '<span class="muted">正常</span>') + '</td>' +
         '</tr>';
@@ -413,9 +452,9 @@
       return '<th' + (extraCls ? ' class="' + extraCls + '"' : '') + (k ? ' data-action="swing.sort" data-key="' + k + '" style="cursor:pointer"' : '') + '>' + label + arrow + '</th>';
     };
     h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
-      th('标的') + th('仓位') + th('状态') + th('买点区间', 'buyHigh') + th('中枢', 'hub', 'swing-opt') +
+      th('标的') + th('仓位') + th('状态') + th('估值数据') + th('买点区间', 'buyHigh') + th('中枢', 'hub', 'swing-opt') +
       th('减持区', 'trimZone', 'swing-opt') + th('现价') + th('距买点', 'gap') +
-      th('估值数据') + th('复核日', 'nextReview') + th('操作') +
+      th('复核日', 'nextReview') + th('操作') +
       '</tr></thead><tbody>';
     list.forEach(it => { h += rowHtml(it); if(state.swingDetailId === it.id) h += detailHtml(it); });
     h += '</tbody></table></div>';
@@ -426,6 +465,9 @@
     const c = findVal(it.ticker);
     const pi = priceInfo(it);
     const d = daysTo(it.nextReview);
+    const ri = ratingInfo(it);
+    const eh = effHub(it);          // 有效中枢：手动优先，未填自动取最新估值
+    const et = effTrim(it, ri);     // 有效减持区：手动优先，未填按评级给止盈参考
     let reviewHtml = esc(it.nextReview || '—');
     if(d != null && d < 0) reviewHtml = '<span class="swing-review-over">' + reviewHtml + ' ⚠需重估</span>';
     else if(d != null && d <= 7) reviewHtml = '<span class="swing-review-warn">' + reviewHtml + '</span>';
@@ -435,6 +477,7 @@
     if(it.status === '待击球') ops += '<button class="btn primary sm" data-action="swing.hit" data-id="' + it.id + '">击球</button> ';
     if(it.status === '持仓中') ops += '<button class="btn sm" data-action="swing.sell" data-id="' + it.id + '">卖出</button> ';
     ops += '<button class="btn ghost sm" data-action="swing.review" data-id="' + it.id + '" title="财报披露后强制复核买点（铁律①）">复核</button> ';
+    if(ri && ri.tol && eh.hub != null) ops += '<button class="icon-btn" data-action="swing.recalcRating" data-id="' + it.id + '" title="按评级 ' + ri.grade + ' 重算买点：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + '">🏛↻</button> ';
     ops += '<button class="icon-btn" data-action="swing.toggleRow" data-id="' + it.id + '" title="展开详情">▾</button>' +
            '<button class="icon-btn" data-action="swing.edit" data-id="' + it.id + '" title="编辑">✎</button>' +
            '<button class="icon-btn" data-action="swing.del" data-id="' + it.id + '" title="删除（不进回收站，建议先导出备份）">✕</button>';
@@ -446,7 +489,19 @@
       : '<b>' + nm + '</b> <button class="btn ghost sm" data-action="swing.addVal" data-ticker="' + esc(it.ticker) + '" data-name="' + esc(it.name || '') + '" title="加入公司估值，获得现价/行情/估值数据">➕估值</button>') +
       '<div class="muted" style="font-size:11px">' + esc(normTicker(it.ticker)) +
       (c ? '' : ' · <span title="未加入估值模块，现价为手填">未入估值</span>') +
-      (it.form ? '<br>' + esc(it.form) : '') + '</div>';
+      (it.form ? '<br>' + esc(it.form) : '') + '</div>' +
+      ((window.ValCore && ValCore.ratingBadgeHTML) ? ValCore.ratingBadgeHTML(c ? c.rating : null) : '');
+
+    /* 买点 cell：区间 + 评级偏离/禁入提示（偏离 = 当前区间 ≠ 评级建议击球区，点操作列 🏛↻ 一键重算） */
+    let buyCell = fmtBuy(it);
+    if(ri && ri.tol && eh.hub != null){
+      const sugLo = Math.round(eh.hub * ri.tol[0] * 100) / 100;
+      const sugHi = Math.round(eh.hub * ri.tol[1] * 100) / 100;
+      const off = it.buyLow == null || it.buyHigh == null ||
+        Math.abs((it.buyLow || 0) - sugLo) > 0.01 || Math.abs((it.buyHigh || 0) - sugHi) > 0.01;
+      if(off) buyCell += ' <span class="badge amber" title="评级 ' + ri.grade + ' 建议击球区 ' + fmtN(sugLo) + '–' + fmtN(sugHi) + '（中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? ' 自动' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + '）">偏离</span>';
+    }
+    if(ri && ri.grade === 'D') buyCell += ' <span class="badge red" title="评级 D：禁入">禁入</span>';
 
     /* 估值数据：估值模块最新一条估值记录（价格 + 日期 + 方法） */
     const v = latestValuation(it.ticker);
@@ -476,12 +531,14 @@
       '<td>' + nameHtml + '</td>' +
       '<td><span class="badge ' + (POOL_CLS[it.pool] || 'gray') + '" title="' + esc(POOL_DESC[it.pool] || '') + '">' + esc(it.pool) + '</span></td>' +
       '<td><span class="badge ' + (STATUS_CLS[it.status] || 'gray') + '">' + esc(it.status) + '</span></td>' +
-      '<td>' + fmtBuy(it) + '</td>' +
-      '<td class="swing-opt">' + (it.hub != null ? fmtN(it.hub) : '<span class="muted">—</span>') + '</td>' +
-      '<td class="swing-opt">' + (it.trimZone != null ? fmtN(it.trimZone) : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + valHtml + '</td>' +
+      '<td>' + buyCell + '</td>' +
+      '<td class="swing-opt">' + (eh.hub != null ? fmtN(eh.hub) +
+        (eh.src === 'auto' ? ' <span class="muted" style="font-size:10px" title="未手动填写，自动取「公司估值」最新估值价；✎ 编辑里填写后转为手动">自动</span>' : '') : '<span class="muted">—</span>') + '</td>' +
+      '<td class="swing-opt">' + (et.trim != null ? fmtN(et.trim) +
+        (et.src === 'manual' ? '' : ' <span class="muted" style="font-size:10px" title="' + esc(trimTip(ri)) + '">' + (et.src === 'auto' ? esc(((ri && ri.grade) || '') + '级参考') : '默认参考') + '</span>') : '<span class="muted">—</span>') + '</td>' +
       '<td>' + priceHtml + '</td>' +
       '<td>' + fmtGap(gapPct(it)) + '</td>' +
-      '<td>' + valHtml + '</td>' +
       '<td>' + reviewHtml + '</td>' +
       '<td style="white-space:nowrap">' + ops + '</td>' +
       '</tr>';
@@ -494,6 +551,24 @@
 
     let h = '<tr class="swing-detail-row"><td colspan="11">';
     h += '<div class="swing-detail-grid">';
+
+    /* 评级联动：等级 / 仓位权限 / 建议击球区（= 有效中枢 × 评级宽容度）+ 减持区止盈参考 */
+    const ri = ratingInfo(it);
+    const eh = effHub(it);
+    const et = effTrim(it, ri);
+    if(ri){
+      const canRecalc = ri.tol && eh.hub != null;
+      h += '<div style="grid-column:1/-1;font-size:12px">' +
+        ((window.ValCore && ValCore.ratingBadgeHTML) ? ValCore.ratingBadgeHTML({ grade: ri.grade }) : '') +
+        ' <span class="muted">仓位权限 ≤' + ri.posCap + '%' +
+        (canRecalc
+          ? ' · 建议击球区 = 中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' = ' + fmtN(eh.hub * ri.tol[0]) + ' – ' + fmtN(eh.hub * ri.tol[1])
+          : (ri.tol ? ' · 未填估值中枢且估值模块暂无估值记录（✎ 编辑里可填）' : '')) +
+        (ri.grade === 'D' ? ' · 禁入' : '') + '</span>' +
+        (canRecalc ? ' <button class="btn ghost sm" style="padding:0 8px;font-size:11px" data-action="swing.recalcRating" data-id="' + it.id + '" title="买点区间 = 中枢 × 评级宽容度">按评级重算买点</button>' : '') +
+        (et.trim != null && et.src !== 'manual' ? ' <span class="muted" title="' + esc(trimTip(ri)) + '">· 减持区参考 ' + fmtN(et.trim) + '</span>' : '') +
+        '</div>';
+    }
 
     /* 失效条件（一等公民，置顶） */
     h += '<div><b>⛔ 失效条件</b>（跌破买点先查这里，触发 = 撤单/止损，铁律③）<ul class="swing-events">' +
@@ -577,12 +652,15 @@
   function openHit(it){
     const late = todayWarn(it);
     const g = gapPct(it);
+    const ri = ratingInfo(it);
     let warn = '';
     if(late) warn = '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ 复核日 ' + esc(it.nextReview) + ' 已过期：锚定过期中枢 = 无效击球（铁律①）。请先「复核」更新买点，再击球。</div>';
     if(g != null && g > 15) warn += '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ 当前距买点 ' + g.toFixed(1) + '%（>15%）：禁止提前击球（铁律④）。</div>';
+    if(ri && ri.grade === 'D') warn += '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⛔ 评级 D：禁入。不允许击球；已有持仓按止损纪律退出（评级联动）。</div>';
     openModal('🎯 击球 · ' + (it.name || it.ticker),
       warn +
-      '<div class="hint" style="margin-bottom:10px">买点 ' + fmtBuy(it) + ' · 现价距买点 ' + (g == null ? '—' : g.toFixed(1) + '%') + ' · 分批 4:3:3，第二批触发 = 再跌 8-10% 或 季报二次验证（铁律②）。跌破买点先查失效条件（铁律③）。</div>' +
+      '<div class="hint" style="margin-bottom:10px">买点 ' + fmtBuy(it) + ' · 现价距买点 ' + (g == null ? '—' : g.toFixed(1) + '%') + ' · 分批 4:3:3，第二批触发 = 再跌 8-10% 或 季报二次验证（铁律②）。跌破买点先查失效条件（铁律③）。' +
+      (ri ? (ri.tol ? ' 评级 ' + ri.grade + '：单票仓位 ≤' + ri.posCap + '%。' : ' 评级 D：禁入。') : '') + '</div>' +
       '<div class="field"><label>买入理由 ①（必填）</label><textarea name="r1" rows="2" required></textarea></div>' +
       '<div class="field"><label>买入理由 ②</label><textarea name="r2" rows="2"></textarea></div>' +
       '<div class="field"><label>买入理由 ③</label><textarea name="r3" rows="2"></textarea></div>' +
@@ -609,8 +687,19 @@
       'swing.sellForm');
   }
   function openReview(it){
+    const ri = ratingInfo(it);
+    const eh = effHub(it);
+    const et = effTrim(it, ri);
+    const sugZone = (ri && ri.tol && eh.hub != null)
+      ? '评级 ' + ri.grade + ' 建议买点：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' = ' + fmtN(eh.hub * ri.tol[0]) + ' – ' + fmtN(eh.hub * ri.tol[1]) + '（可直接填入下方新区间）。'
+      : (ri && ri.grade === 'D' ? '评级 D：禁入，建议撤单或降级处理。' : '');
+    const sugTrim = (et.trim != null && et.src !== 'manual')
+      ? '减持区参考：' + fmtN(et.trim) + '（' + trimTip(ri) + '）。'
+      : '';
     openModal('复核 · ' + (it.name || it.ticker),
-      '<div class="hint" style="margin-bottom:10px">铁律①：每次财报披露后强制复核买点（中枢变了买点跟着变），锚定过期中枢 = 无效击球。可到「财报跟踪」核对最新披露数据。</div>' +
+      '<div class="hint" style="margin-bottom:10px">铁律①：每次财报披露后强制复核买点（中枢变了买点跟着变），锚定过期中枢 = 无效击球。可到「财报跟踪」核对最新披露数据。' +
+      (sugZone ? '<br>🏛 ' + esc(sugZone) : '') +
+      (sugTrim ? '<br>🎯 ' + esc(sugTrim) : '') + '</div>' +
       '<div class="quick-row">' +
         '<div class="field"><label>复核结论</label><select name="concl">' +
           '<option value="维持">维持买点不变</option>' +
@@ -683,6 +772,20 @@
       },
       'swing.review': el => {
         const it = DB.swing.items.find(x => x.id === el.dataset.id); if(it) openReview(it);
+      },
+      // 按评级重算买点区间：买点 = 中枢 × 评级宽容度（S 0.90–1.05 … C 0.60–0.80）
+      'swing.recalcRating': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(!it) return;
+        const ri = ratingInfo(it);
+        if(!ri || !ri.tol){ toast('⚠️ 未评级或评级 D，无法按评级重算买点（先到估值详情完成评级）'); return; }
+        const eh = effHub(it);
+        if(eh.hub == null){ toast('⚠️ 缺少估值中枢：请在 ✎ 编辑里填写，或先到「公司估值」录入一次估值（可自动取）'); return; }
+        const lo = Math.round(eh.hub * ri.tol[0] * 100) / 100;
+        const hi = Math.round(eh.hub * ri.tol[1] * 100) / 100;
+        it.buyLow = lo; it.buyHigh = hi;
+        pushEvent(it, '买点按评级 ' + ri.grade + ' 重算：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' → ' + fmtN(lo) + '–' + fmtN(hi));
+        save(); render();
+        toast('✅ 买点已按评级 ' + ri.grade + ' 重算：' + fmtN(lo) + ' – ' + fmtN(hi));
       },
       /* 台账 → 估值：未入估值的一键补齐（复用 earn.addVal 模式） */
       'swing.addVal': el => {
@@ -776,6 +879,8 @@
       /* 击球：填理由三行 → 持仓中 */
       'swing.hitForm': fd => {
         const it = DB.swing.items.find(x => x.id === fd.get('id')); if(!it) return;
+        const riD = ratingInfo(it);
+        if(riD && riD.grade === 'D'){ toast('⛔ 评级 D：禁入，不允许击球（评级联动）'); return; }
         const r1 = String(fd.get('r1') || '').trim();
         if(!r1){ toast('⚠️ 买入理由① 必填'); return; }
         it.reasons = { r1: r1, r2: String(fd.get('r2') || '').trim(), r3: String(fd.get('r3') || '').trim() };
