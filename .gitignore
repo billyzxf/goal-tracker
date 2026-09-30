@@ -34,3 +34,8 @@ goal-tracker-data*.json
 
 # IDE config dir
 .codebuddy/
+.trae/
+.workbuddy/
+
+# 投资研究数据备份（导入快照，无需入库）
+data/invest-data.backup-*.json

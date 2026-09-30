@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="GoalTracker">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json" id="manifest-link">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
@@ -23,6 +23,11 @@
       document.documentElement.classList.add('dark');
       var m = document.querySelector('meta[name="theme-color"]');
       if(m) m.setAttribute('content', '#0d1117');
+    }
+    // file:// 下浏览器会因 CORS 拒绝抓取 manifest 并反复报错；PWA 能力本就只在 http(s) 下可用，直接摘掉
+    if(location.protocol === 'file:'){
+      var ml = document.getElementById('manifest-link');
+      if(ml) ml.parentNode.removeChild(ml);
     }
   }catch(e){}
 })();
@@ -44,17 +49,24 @@
   <nav id="nav"></nav>
   <div class="side-foot">
     <div id="sync-box"></div>
+    <button class="btn ghost sm" onclick="location.href='invest.html'" title="切换到投资研究独立应用（待击球/估值/财报/行业/宏观）">📈 投资研究 →</button>
     <button class="btn ghost sm" data-action="theme.toggle" title="切换深色 / 浅色主题">🌙 深色模式</button>
     <button class="btn ghost sm" data-action="data.export" title="导出完整数据备份：goal-tracker-data.json（含全部模块数据，用于换设备/同步盘）">⬇ 导出备份</button>
     <button class="btn ghost sm" data-action="data.import" title="导入数据：goal-tracker-data.json（会用导入内容覆盖当前数据，建议先导出备份）">⬆ 导入数据</button>
+    <button class="btn ghost sm" data-action="data.remoteCheck" title="比对同步盘里的 goal-tracker-data.json 与浏览器内的数据，若磁盘更新可一键加载">🔄 检查同步盘</button>
     <div class="side-note">数据文件名：goal-tracker-data.json<br>IndexedDB 本地存储 · 导出 JSON 同步</div>
   </div>
 </aside>
 <main id="main"></main>
+<!-- 同步盘更新提示条（core.js 的 checkRemoteData 填充；初始 hidden） -->
+<div id="remote-bar" class="remote-bar" hidden></div>
 <div id="modal-root"></div>
 <input type="file" id="import-file" accept="application/json" hidden>
 <!-- 内核 -->
+<script>console.log('%c[GoalTracker] 构建 2026-09-17-a · 评级系统+全市场分类地图版','background:#0ea97b;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold');</script>
 <script src="core.js"></script>
+<!-- 汉字转拼音库（公司搜索的拼音模糊匹配用；UMD → window.pinyinPro，加载失败时自动退化为原文匹配） -->
+<script src="lib/pinyin-pro.js"></script>
 <!-- 模块（按需新增：加一行 script + 一个 modules/*.js 即可，无需改内核） -->
 <script src="modules/dashboard.js"></script>
 <script src="modules/habits.js"></script>
@@ -66,12 +78,6 @@
 <script src="modules/side.js"></script>
 <script src="modules/threshold.js"></script>
 <script src="modules/principles.js"></script>
-<!-- 估值纯函数（被 valuation.js / dashboard 复用），须在 valuation.js 之前加载 -->
-<script src="modules/val-core.js"></script>
-<script src="modules/valuation.js"></script>
-<!-- 财报跟踪（公司估值下方，投资追踪组） -->
-<script src="modules/earnings.js"></script>
-<script src="modules/macro.js"></script>
 <!-- 移动端交互 + Service Worker 注册 -->
 <script src="mobile.js"></script>
 <!-- 启动入口 -->

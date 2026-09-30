@@ -9,6 +9,7 @@
  *   cn_econ    中国经济周期（每月）——PMI/工业/消费/出口/地产
  *   price      价格周期（每月）——CPI/PPI 四象限
  *   market     市场自身（每日/每周）——成交/两融/估值/股债收益差
+ *   industry   行业高频（每日/每周）——DRAM/运价/制冷剂等板块高频数据（L2 行业温度计的数据源）
  *
  * 数据模型（存在 DB.macro）：
  *   groups: [ { id, key, name, indicators: [...] } ]   // CSV 表（保留，导入导出单位）
@@ -21,9 +22,18 @@
  *   fedwatch: [ { id, meeting:'2026-09', cut, hold, hike, updated,
  *                 prev:{cut,hold,hike,updated} } ]       // FOMC 利率概率 + 上次快照（边际变化）
  *   scores: { liquidity, growth, valuation }             // 温度计人工修正（-25~+25）
+ *   pools: [ { id, key, name, icon, desc, fixed, falsify,        // L1/L2 温度计池
+ *              items:[{ id, label, ref, unit, dir, green, yellow,
+ *                       falsify, action, note }] } ]
+ *     // ref: 'ind:<指标key>'（引用 DB.macro 指标）或 'fedwatch'（取最新会议加息概率）
+ *     // dir: 'above' 值≥green绿/≥yellow黄/否则红；'below' 值≤green绿/≤yellow黄/否则红；
+ *     //      'up' 环比↑绿 / 'down' 环比↓绿（价格类高频指标用环比，不设绝对阈值）
  *
  * 三温度计 + Regime：流动性/经济/估值三个 0-100 分（自动环比投票 + 人工修正），
  *   再派生两组 Regime：盈利×估值四象限、流动性×经济四状态。
+ * L1/L2 温度计：阈值红黄绿灯体系（独立于环比投票温度计）——
+ *   L1 宏观温度计（天气层，5-6 项核心指标）影响全部持仓；
+ *   L2 行业温度计（季节层，行业池 × 2-5 指标）决定板块轮动；每项绑阈值 + 证伪线 + 触发动作。
  *
  * 兼容：旧结构（扁平 indicators / 无 layer 元数据）由 ensure() 自动迁移。
  */
@@ -33,10 +43,10 @@
     { key:'global',   name:'国际宏观经济' },
   ];
   const CAT_TO_GROUP = { '海外与利率':'global' };   // 其余分类默认归入 domestic
-  const FREQS = ['日度','月度','季度','年度'];
-  const CATS = ['国内经济', '物价通胀', '货币与金融', '海外与利率', '就业与民生'];
+  const FREQS = ['日度','周度','月度','季度','年度'];
+  const CATS = ['国内经济', '物价通胀', '货币与金融', '海外与利率', '就业与民生', '行业跟踪'];
 
-  /* ===== 五层体系 ===== */
+  /* ===== 六层体系 ===== */
   const LAYERS = [
     { key:'global_liq', name:'第一层 · 全球流动性', icon:'🌍', tag:'每日 ★★★★★',
       desc:'全球的钱贵不贵？——美债利率是A股定价的外部锚，美元决定新兴市场流动性。' },
@@ -48,6 +58,8 @@
       desc:'企业定价能力怎么样？——PPI 对 A 股盈利尤其重要，CPI×PPI 组合看通缩风险。' },
     { key:'market', name:'第五层 · 市场自身', icon:'📊', tag:'每日/每周 ★★★★★',
       desc:'钱最终有没有进入股票？——成交、两融看情绪，估值分位与股债收益差看位置。' },
+    { key:'industry', name:'第六层 · 行业高频', icon:'🧩', tag:'每日/每周 ★★★',
+      desc:'板块景气的高频代理变量——DRAM 现货价、运价指数、制冷剂价格、云厂商 CapEx 等，为 L2 行业温度计提供数据源。' },
   ];
   // 每日速览（S级 · 日度频率）：每日 5 分钟只看这些
   const DAILY_KEYS = ['us2y','us10y','real10y','dxy','usdcny','oil','gold','copper','turnover'];
@@ -63,6 +75,16 @@
     unemp:  { layer:'cn_econ', importance:'B' },
     fed:    { layer:'global_liq', importance:'S', direction:'down_good', scoreLayer:'liquidity' },
     us10y:  { layer:'global_liq', importance:'S', direction:'down_good', scoreLayer:'liquidity' },
+    // 估值层：PE 环比上行=估值扩张（偏多），下行=估值收缩（偏空），与 Regime 四象限口径一致
+    hs300pe:  { layer:'market', importance:'S', direction:'up_good', scoreLayer:'valuation' },
+    csi500pe: { layer:'market', importance:'A', direction:'up_good', scoreLayer:'valuation' },
+    allape:   { layer:'market', importance:'A', direction:'up_good', scoreLayer:'valuation' },
+    // 补充参考指标（已接入自动抓取，用于替代拿不到的分项数据）
+    elec:      { layer:'cn_econ', importance:'A', direction:'up_good', scoreLayer:'growth' },
+    czsr:      { layer:'cn_econ', importance:'B', direction:'up_good', scoreLayer:'growth' },
+    boom:      { layer:'cn_econ', importance:'B', direction:'up_good', scoreLayer:'growth' },
+    newcredit: { layer:'cn_liq',  importance:'A', direction:'up_good', scoreLayer:'growth' },
+    commprice: { layer:'price',   importance:'A', direction:'up_good', scoreLayer:'growth' },
   };
   // 日期筛选范围（所有指标共用同一套按钮）。key 存 state.macroRange
   const MACRO_RANGES = [
@@ -136,8 +158,10 @@
       [['2023-06',5.50],['2023-12',5.50],['2024-06',5.50],['2024-12',4.50],['2025-06',4.00],['2025-12',3.75],['2026-03',3.50],['2026-06',3.25]]);
 
     /* ===== 第二层 · 中国流动性 ===== */
-    put('dr007', 'DR007（7天回购利率）', '货币与金融', '%', '日度', 'cn_liq', 'S', 'down_good', 'liquidity',
-      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。', null);
+    put('dr007', '银行间 7 天回购利率', '货币与金融', '%', '日度', 'cn_liq', 'S', 'down_good', 'liquidity',
+      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。数据取 FR007 回购定盘利率（与 DR007 高度同步的公开可得替代）。', null);
+    put('newcredit', '新增人民币贷款同比', '货币与金融', '%', '月度', 'cn_liq', 'A', 'up_good', 'growth',
+      '信用扩张的流量观测：新增贷款同比回升=实体融资需求改善（存量看社融，目前需手动录入）。', null);
     put('cn1y', '中国 1Y 国债收益率', '货币与金融', '%', '日度', 'cn_liq', 'A', 'down_good', 'liquidity',
       '短端无风险利率，反映银行体系资金成本。', null);
     put('cn10y', '中国 10Y 国债收益率', '货币与金融', '%', '日度', 'cn_liq', 'S', null, null,
@@ -157,12 +181,6 @@
     put('m2', 'M2 同比', '货币与金融', '%', '月度', 'cn_liq', 'A', 'up_good', 'liquidity',
       '广义货币/资金总量。单独看意义有限，重点是 M1-M2 剪刀差。',
       [['2023-06',11.3],['2023-12',9.7],['2024-06',6.2],['2024-12',7.3],['2025-06',7.0],['2025-12',7.4],['2026-03',7.5],['2026-06',7.6]]);
-    put('corploan', '企业中长期贷款同比', '货币与金融', '%', '月度', 'cn_liq', 'A', 'up_good', 'growth',
-      '企业借钱扩产的意愿，是社融里质量最高的分项：企业中长期贷款改善 = 真实的资本开支需求回暖。', null);
-    put('hhloan', '居民中长期贷款同比', '货币与金融', '%', '月度', 'cn_liq', 'B', 'up_good', 'growth',
-      '主要是房贷，与地产销售互相印证。居民加杠杆意愿恢复是地产链信用扩张的前提。', null);
-    put('govbond', '政府债券融资', '货币与金融', '亿', '月度', 'cn_liq', 'A', 'up_good', 'growth',
-      '社融中越来越重要的分项：财政发力（专项债/特别国债）主要靠它。货币宽松+财政积极 > 单纯降息的刺激效果。', null);
     put('usdcny', '人民币汇率 USDCNY', '海外与利率', '', '日度', 'cn_liq', 'S', null, null,
       '比绝对值更重要的是变化速度：短时间快速贬值（如 7.05→7.20）比长期横盘更值得警惕。整数关口（7.0/7.1/7.2）是市场关注点。',
       [['2024-06',7.25],['2024-12',7.30],['2025-06',7.17],['2025-12',7.08],['2026-03',7.02],['2026-06',7.05],['2026-07',7.08],['2026-08',7.10]]);
@@ -179,8 +197,6 @@
       [['2023Q1',4.5],['2023Q2',6.3],['2023Q3',4.9],['2023Q4',5.2],['2024Q1',5.3],['2024Q2',4.7],['2024Q3',4.6],['2024Q4',5.4],['2025Q1',5.4],['2025Q2',4.5]]);
     put('indval', '工业增加值同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
       'A股=制造业+科技高权重市场，工业周期直接影响盈利。关注高技术制造业分项。', null);
-    put('indprofit', '工业企业利润同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
-      '上市公司盈利的宏观映射：收入-成本=利润，与 PPI 高度相关。比 GDP 更贴近 A 股盈利。', null);
     put('fixedasset', '固定资产投资同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
       '细分制造业投资/基建投资/地产投资三条线看：基建对应财政发力，制造业对应产业周期。', null);
     put('retail', '社会消费品零售同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
@@ -188,8 +204,12 @@
     put('exports', '出口同比', '国内经济', '%', '月度', 'cn_econ', 'S', 'up_good', 'growth',
       '外需是中国宏观周期重要支撑。重点看"超预期/低于预期"而非绝对值。',
       [['2024-06',10.7],['2024-12',10.9],['2025-06',5.8],['2025-12',6.7],['2026-06',12.5],['2026-07',14.0]]);
-    put('prop_sale', '商品房销售面积同比', '国内经济', '%', '月度', 'cn_econ', 'S', 'up_good', 'growth',
-      '地产是信用之母：销售恢复→开发商现金流→拿地投资→建材家电→银行信用→财富效应。销售比开工更重要。', null);
+    put('elec', '全社会用电量同比', '国内经济', '%', '月度', 'cn_econ', 'A', 'up_good', 'growth',
+      '经济晴雨表：用电量比 GDP 更实时地反映工业生产与经济活动强度。', null);
+    put('czsr', '财政收入同比', '国内经济', '%', '月度', 'cn_econ', 'B', 'up_good', 'growth',
+      '财政发力程度：收入改善配合支出扩张，对基建与总需求形成支撑。', null);
+    put('boom', '企业景气指数', '国内经济', '', '季度', 'cn_econ', 'B', 'up_good', 'growth',
+      '央行调查的企业景气度（>100 为景气区间）：环比改善=企业预期回暖。', null);
     put('unemp', '城镇调查失业率', '就业与民生', '%', '月度', 'cn_econ', 'B', null, null,
       '就业形势与内需基础。失业率上行通常伴随消费与风险偏好走弱。',
       [['2023-06',5.2],['2023-12',5.1],['2024-06',5.0],['2024-12',5.1],['2025-06',5.0],['2025-12',5.0],['2026-03',5.1],['2026-06',5.0]]);
@@ -198,39 +218,185 @@
     put('cpi', 'CPI 同比', '物价通胀', '%', '月度', 'price', 'A', 'up_good', 'growth',
       '居民物价。核心CPI（剔除食品能源）更值得长期跟踪：核心CPI↑ = 内需+定价能力改善。',
       [['2023-06',0.0],['2023-12',-0.3],['2024-06',0.2],['2024-12',0.1],['2025-06',0.3],['2025-12',0.5],['2026-03',0.8],['2026-06',0.6],['2026-07',0.7]]);
-    put('corecpi', '核心 CPI 同比', '物价通胀', '%', '月度', 'price', 'A', 'up_good', 'growth',
-      '剔除食品和能源后的 CPI：油价上涨推高 headline CPI 但核心不变 = 内需未变。核心CPI 持续上行才是真内需改善。', null);
     put('ppi', 'PPI 同比', '物价通胀', '%', '月度', 'price', 'S', 'up_good', 'growth',
       '工业品出厂价格：直接决定工业企业"收入-成本=利润"。对钢铁/化工/有色/煤炭影响明显。对 A 股重要性不低于 CPI。',
       [['2023-06',-5.4],['2023-12',-2.7],['2024-06',-0.8],['2024-12',-2.3],['2025-06',-2.0],['2025-12',-1.5],['2026-03',-1.2],['2026-06',-0.9],['2026-07',3.5]]);
+    put('commprice', '大宗商品价格指数', '物价通胀', '', '日度', 'price', 'A', 'up_good', 'growth',
+      'PPI 的领先观测：大宗商品价格上行→工业企业成本与通胀预期变化；日度更新更及时。', null);
 
     /* ===== 第五层 · 市场自身 ===== */
     put('turnover', 'A股成交额', '市场', '万亿', '日度', 'market', 'S', 'up_good', 'valuation',
       '指数涨但成交额缩（2万亿→1.3万亿）不健康；横盘但放量可能在风格切换。', null);
-    put('hs300pe', '沪深300 PE', '市场', '倍', '周度', 'market', 'S', null, 'valuation',
-      '估值本身无意义，历史分位数才有意义（如 18 倍若处于 10 年 95% 分位则完全不同）。用于计算股债收益差。', null);
+    put('hs300pe', '沪深300 PE', '市场', '倍', '周度', 'market', 'S', 'up_good', 'valuation',
+      '估值本身无意义，历史分位数才有意义。方向口径：PE 环比上行=估值扩张（偏多）、下行=估值收缩（偏空）；同时用于计算股债收益差。', null);
     put('us30y', '美债 30Y 收益率', '海外与利率', '%', '日度', 'global_liq', 'B', 'down_good', 'liquidity',
       '长期通胀、财政与债务预期、期限溢价。30Y 快速上行常反映财政/通胀担忧。', null);
     put('breakeven', '10Y 盈亏平衡通胀', '海外与利率', '%', '日度', 'global_liq', 'A', null, null,
       '名义10Y − 实际利率 = 通胀预期。与实际利率组合判断：通胀预期↑ 利好黄金/资源。', null);
     put('margin', '两融余额', '市场', '万亿', '日度', 'market', 'A', 'up_good', 'valuation',
       '杠杆资金情绪。两融快速上升 = 风险偏好高，但也意味着波动放大。', null);
-    put('etfflow', '股票 ETF 资金流', '市场', '亿', '周度', 'market', 'A', 'up_good', 'valuation',
-      '配置型资金方向。持续净流入 = 增量资金入场。', null);
     put('northbound', '北向资金净流入', '市场', '亿', '日度', 'market', 'A', 'up_good', 'valuation',
       '外资风险偏好观测。持续流出常与美元走强/人民币贬值压力同期出现——先看 DXY 再解读。', null);
-    put('csi500pe', '中证500 PE', '市场', '倍', '周度', 'market', 'A', null, 'valuation',
-      '中盘估值。与沪深300 PE 对比看大小盘风格：中证500/沪深300 PE 比值走阔 = 成长/小盘占优。', null);
-    put('allape', '全部A股市盈率', '市场', '倍', '周度', 'market', 'A', null, 'valuation',
-      '全市场估值中枢，代表整体贵贱。同样必须结合历史分位数看（见卡片上的分位徽章）。', null);
+    put('csi500pe', '中证500 PE', '市场', '倍', '周度', 'market', 'A', 'up_good', 'valuation',
+      '中盘估值。与沪深300 PE 对比看大小盘风格；方向口径同沪深300 PE（环比上行=估值扩张）。', null);
+    put('allape', '全部A股市盈率', '市场', '倍', '周度', 'market', 'A', 'up_good', 'valuation',
+      '全市场估值中枢，必须结合历史分位数看（见卡片上的分位徽章）；方向同沪深300 PE（环比上行=估值扩张）。', null);
+
+    /* ===== 第六层 · 行业高频（L2 行业温度计的数据源） ===== */
+    put('wti', 'WTI 原油', '海外与利率', '美元', '日度', 'global_liq', 'A', null, null,
+      '美油基准，比布伦特对美国通胀/库存更敏感。>100 = 通胀压力红灯。', null);
+    put('vix', 'VIX 恐慌指数', '海外与利率', '', '日度', 'global_liq', 'A', null, null,
+      '标普期权隐含波动率：>28 全球 risk-off，与 A 股外资流向负相关。', null);
+    put('dram_ddr4', 'DRAM 现货价 · DDR4 8Gb', '行业跟踪', '美元', '日度', 'industry', 'A', null, null,
+      '存储周期最直观的高频代理：现货价环比连涨 = 存储景气上行（dramx.com 每交易日更新）。', null);
+    put('dram_ddr5', 'DRAM 现货价 · DDR5 16Gb', '行业跟踪', '美元', '日度', 'industry', 'A', null, null,
+      'DDR5 是当前主力合约，对存储模组/接口芯片厂商的业绩弹性更直接（dramx.com 每交易日更新）。', null);
+    put('roe_storage', '存储代理 ROE（香农芯创）', '行业跟踪', '%', '季度', 'industry', 'B', null, null,
+      '香农芯创（300475，存储分销龙头）单季 ROE，取自本地财务档案自动计算：ROE 抬升 = 存储涨价落地；触顶回落 = 景气见顶预警。', null);
+    put('vlcc_tce', 'VLCC 运价 · CT1', '行业跟踪', '点', '日度', 'industry', 'A', null, null,
+      '上海航交所 CTFI 分航线指数 CT1（中东-中国 VLCC 主航线，每日更新）：上行 = 油运运价景气，利好中远海能/招商轮船等。', null);
+    put('r32', 'R32 制冷剂价格', '行业跟踪', '万元/吨', '周度', 'industry', 'A', null, null,
+      '氟化工配额周期核心品种：价格持续上行 = 巨化等龙头量价齐升。生意社反爬无免费源，保持手动录入；可借巨化股份毛利率作替代观测。', null);
+    put('tc_rc', '铜精矿加工费 TC', '行业跟踪', '美元/吨', '周度', 'industry', 'A', null, null,
+      '铜矿供给的反向指标：TC 暴跌 = 矿端紧缺 = 供给约束逻辑强化（利好铜价与矿企）。SMM 口径付费无免费源，保持手动；可借 BDI 铜矿运量作侧面观测。', null);
+    put('capex_big4', '北美云厂 CapEx 同比', '行业跟踪', '%', '季度', 'industry', 'A', null, null,
+      'MSFT+GOOG+AMZN+META 季度资本开支合计同比（stockanalysis.com 财报数据自动汇总）：算力/光模块/PCB 需求的源头，上修周期 = 算力链景气确认。', null);
+    put('pcb_vis', 'PCB 订单能见度', '行业跟踪', '月', '月度', 'industry', 'B', null, null,
+      '头部 PCB 厂订单排产能见度（月）：≥6 个月 = AI 服务器板需求扎实。纯调研口径无公开数据源，保持手动录入。', null);
+    put('pe_power', '电源设备 PE（申万）', '行业跟踪', '倍', '日度', 'industry', 'B', null, null,
+      '申万二级「其他电源设备Ⅱ」TTM 市盈率快照（光储/锂电/核电设备估值中枢，每日自动抓取）：>80x 进入观察池深处，控制击球纪律。', null);
+    put('game_lic', '游戏版号发放数量', '行业跟踪', '款', '月度', 'industry', 'B', null, null,
+      '国产网游版号月度发放数量（NPPA 官网公告自动解析）：供给端政策信号，连续放量 = 行业监管回暖。', null);
+    put('mil_contr', '军工合同负债同比（中国船舶）', '行业跟踪', '%', '季度', 'industry', 'B', null, null,
+      '中国船舶（600150）合同负债同比（本地财务档案自动计算）：军工订单先行指标，与地缘/五年规划共振时弹性大。', null);
+    put('jh_gpm', '氟化工毛利率（巨化）', '行业跟踪', '%', '季度', 'industry', 'B', 'up_good', null,
+      '巨化股份（600160）单季毛利率（本地财务档案自动计算）：R32 涨价→毛利率抬升的利润传导确认，是 R32 价格无免费源时的替代观测。', null);
+    put('cu_smelt_gpm', '铜冶炼毛利率（江铜）', '行业跟踪', '%', '季度', 'industry', 'B', 'down_good', null,
+      '江西铜业（600362）单季毛利率（本地财务档案自动计算）：TC 暴跌→冶炼利润受压→毛利率下滑，是铜 TC 无免费源时的侧面观测（方向：毛利率越低=矿端越紧）。', null);
+    put('pcb_rev', 'PCB 营收同比（沪电）', '行业跟踪', '%', '季度', 'industry', 'B', 'up_good', null,
+      '沪电股份（002463）单季营收同比（本地财务档案自动计算）：AI 服务器板需求最直接的财报确认，是订单能见度（调研口径）的替代观测。', null);
+
     return { groups, fedwatch: [
       { id:uid(), meeting:'2026-09', cut:20, hold:50, hike:30, updated:dateStr() },
       { id:uid(), meeting:'2026-10', cut:35, hold:45, hike:20, updated:dateStr() },
       { id:uid(), meeting:'2026-12', cut:60, hold:30, hike:10, updated:dateStr() },
     ] };
   }
+
+  /* ===== L1/L2 温度计池 seed =====
+   * item: { label, ref, unit, dir, green, yellow, falsify(证伪线), action(触发动作), note } */
+  function seedPools(){
+    const mkItem = o => Object.assign({ id:uid(), unit:'', falsify:'', action:'', note:'' }, o);
+    const pools = [
+      { key:'l1', name:'L1 · 宏观温度计', icon:'🌡️', fixed:true,
+        desc:'天气层：影响全部持仓。红多 = 宏观逆风，先降仓位弹性再看个股。',
+        items:[
+          mkItem({ label:'美债 10Y', ref:'ind:us10y', unit:'%', dir:'below', green:4.0, yellow:4.5,
+            falsify:'10Y 快速上行至 4.8%+ 且实际利率同步上行 → 成长股估值系统性承压，与"利好出尽"无关',
+            action:'>4.5%：降低成长股仓位弹性，优先高现金流/低估红利；急跌破 4.0% 且因衰退→反而要小心' }),
+          mkItem({ label:'Fed 加息概率', ref:'fedwatch', unit:'%', dir:'below', green:20, yellow:50,
+            falsify:'加息概率 >50% 且 2Y 同步跳升 → 政策路径彻底重定价',
+            action:'>50%：暂停加仓成长；<20% 且降息概率升 → 成长股分母端转顺风' }),
+          mkItem({ label:'美元指数', ref:'ind:dxy', unit:'', dir:'below', green:98, yellow:103,
+            falsify:'DXY >105 且 USDCNH 同步走弱 → 新兴市场流动性危机式外流',
+            action:'>103：控制两融/高贝塔仓位；人民币汇率企稳前不加仓' }),
+          mkItem({ label:'WTI 油价', ref:'ind:wti', unit:'美元', dir:'below', green:80, yellow:100,
+            falsify:'WTI >100 且核心 CPI 回升 → 通胀二次抬头，Fed 宽松预期证伪',
+            action:'>100：利空航空/化工中游成本端，利好油气开采；成长估值再压一格' }),
+          mkItem({ label:'北向资金', ref:'ind:northbound', unit:'亿', dir:'above', green:0, yellow:-50,
+            note:'看 5 日累计趋势而非单日；口径调整/停发实时数据时改看 ETF 流',
+            falsify:'连续 2 周净流出 + 人民币贬值 → 外资系统性减仓，权重白马承压',
+            action:'5 日累计 < -100亿：暂避外资重仓方向（白酒/白电/银行核心）' }),
+          mkItem({ label:'VIX 恐慌指数', ref:'ind:vix', unit:'', dir:'below', green:20, yellow:28,
+            falsify:'VIX >35 → 全球 risk-off，A 股难以独善其身',
+            action:'>28：降杠杆；>35 后快速回落常是阶段性底部信号' }),
+        ] },
+      { key:'storage', name:'存储', icon:'💾',
+        desc:'存储周期看现货价环比与分销盈利：涨价传导到 ROE 才是真景气。周期位置：现货价从底部连涨 = 上行早期（右侧加仓），高分位滞涨 + eTT 涨幅趋缓 = 顶部区。',
+        falsify:'DRAM 现货价连续 4 周回落 + 分销商 ROE 环比下滑 → 景气拐点确认，撤出模组/接口芯片',
+        items:[
+          mkItem({ label:'DRAM DDR5 16Gb', ref:'ind:dram_ddr5', unit:'美元', dir:'up',
+            falsify:'现货价较近 8 周高点回落 >10% → 周期见顶信号', action:'环比连涨 4 周：模组/主控加仓窗口' }),
+          mkItem({ label:'DRAM DDR4 8Gb', ref:'ind:dram_ddr4', unit:'美元', dir:'up',
+            note:'DDR4 涨价多因停产转产，弹性看 DDR5', action:'' }),
+          mkItem({ label:'分销商 ROE', ref:'ind:roe_storage', unit:'%', dir:'above', green:8, yellow:5,
+            falsify:'ROE 触顶回落两个季度 → 涨价利润未留存，景气成色打折', action:'' }),
+        ] },
+      { key:'tanker', name:'油运', icon:'🚢',
+        desc:'地缘 + 拉长运距驱动；运价是唯一真相，股价涨停不等于景气。CT1（中东-中国 VLCC 主航线运价指数）由上海航交所每日发布、自动抓取。',
+        falsify:'CT1 较近 8 周高点回落 >20% 且连跌 → 淡季证伪，等运价回升再谈景气',
+        items:[
+          mkItem({ label:'VLCC 运价 · CT1', ref:'ind:vlcc_tce', dir:'above', green:15000, yellow:8000,
+            falsify:'CT1 <8000 点持续 1 个月 → 盈利下修，估值锚失效', action:'CT1 >15000：旺季行情确认，Q4 传统旺季前布局' }),
+        ] },
+      { key:'compute', name:'算力/光模块', icon:'⚡',
+        desc:'需求源头是北美云厂 CapEx；光模块/交换机/液冷全链条跟随。周期位置：CapEx 同比连续上修 = 景气中段，价格年降幅度是利润率的边际变量。',
+        falsify:'CapEx 指引下修 + 800G 价格年降超 15% → 需求与价格双杀，成长逻辑证伪',
+        items:[
+          mkItem({ label:'云厂 CapEx 同比', ref:'ind:capex_big4', unit:'%', dir:'above', green:20, yellow:10,
+            falsify:'同比 <10% 或指引下修 → 订单能见度坍塌，光模块杀估值', action:'上修季：光模块/PCB/液冷链条全面受益' }),
+          mkItem({ label:'美债 10Y（贴现率）', ref:'ind:us10y', unit:'%', dir:'below', green:4.0, yellow:4.5,
+            note:'算力是久期最长的成长资产，对折现率最敏感', action:'' }),
+        ] },
+      { key:'pcb', name:'PCB', icon:'🧩',
+        desc:'AI 服务器板 + 汽车板双轮；能见度决定估值给法。',
+        falsify:'订单能见度 <2 个月 → 周期股估值，等财报超预期再介入',
+        items:[
+          mkItem({ label:'订单能见度', ref:'ind:pcb_vis', unit:'月', dir:'above', green:6, yellow:3,
+            falsify:'能见度从 6 个月骤降至 3 个月以内 → AI 订单不及预期', action:'≥6 个月：可给成长股估值，4-6 月：PEG 口径' }),
+          mkItem({ label:'沪电营收同比（替代）', ref:'ind:pcb_rev', dir:'up',
+            note:'能见度为调研口径无自动源；沪电是 AI 服务器板核心供应商，营收同比即需求财报确认', action:'' }),
+        ] },
+      { key:'fluoro', name:'氟化工', icon:'🧪',
+        desc:'配额制下的供给收缩周期：R32 价格是巨化们盈利的先行变量（价格无免费源，用巨化毛利率确认传导）。',
+        falsify:'R32 价格环比连跌 4 周（或巨化毛利率连降 2 季）→ 配额逻辑被需求下滑击穿',
+        items:[
+          mkItem({ label:'R32 价格', ref:'ind:r32', unit:'万元/吨', dir:'above', green:3, yellow:2,
+            falsify:'价格跌破成本线 → 配额红利证伪', action:'价格创新高 + 库存低位：S 级击球机会（配额垄断 = 盈利确定性）' }),
+          mkItem({ label:'巨化毛利率（替代）', ref:'ind:jh_gpm', dir:'up',
+            note:'R32 涨价→巨化毛利率抬升 = 传导确认；生意社反爬无免费源，价格项保持手动', action:'' }),
+        ] },
+      { key:'defense', name:'军工', icon:'🚀',
+        desc:'地缘 + 十五五订单周期：合同负债是订单先行指标。',
+        falsify:'合同负债连续 2 个季度负增长 → 订单周期下行为主导，事件驱动难改趋势',
+        items:[
+          mkItem({ label:'合同负债同比', ref:'ind:mil_contr', unit:'%', dir:'above', green:10, yellow:0,
+            note:'地缘事件只改变节奏，不改方向——以合同负债为准', action:'同比转正且加速：主机厂优先' }),
+        ] },
+      { key:'copper', name:'铜', icon:'🟠',
+        desc:'全球工业周期晴雨表：极值区看供给约束（TC）与库存。周期位置：铜价历史极值 + TC 新低 = 供给约束主导（事件驱动强波动），铜价分位回落但 TC 仍低 = 回调即机会。',
+        falsify:'TC 回升 + 铜库存累库 → 供给约束逻辑证伪，铜价回落',
+        items:[
+          mkItem({ label:'铜价', ref:'ind:copper', unit:'美元', dir:'up',
+            note:'历史极值区时绿灯仅代表动能，警惕高位波动', action:'' }),
+          mkItem({ label:'加工费 TC', ref:'ind:tc_rc', unit:'美元/吨', dir:'below', green:30, yellow:60,
+            falsify:'TC 快速反弹 >60 → 矿端宽松，约束逻辑解除', action:'TC <30：矿端紧缺确认，铜矿股盈利上修' }),
+          mkItem({ label:'冶炼毛利率（替代）', ref:'ind:cu_smelt_gpm', dir:'down',
+            note:'TC 无免费源；TC 暴跌→冶炼利润受压→江铜毛利率下滑，毛利率走低 = 矿端紧缺的侧面确认', action:'' }),
+        ] },
+      { key:'power', name:'电源/散热', icon:'🔌',
+        desc:'AI 供电单元高景气，但估值是最大的敌人。',
+        falsify:'PE >80x 且 CapEx 增速下修 → 双高组合，回撤风险最大',
+        items:[
+          mkItem({ label:'板块 PE', ref:'ind:pe_power', unit:'倍', dir:'below', green:50, yellow:80,
+            falsify:'PE 突破 100x → 观察池深处，任何风吹草动都是 20% 级回撤', action:'PE <50：击球区；>80：只看不买，等回调' }),
+        ] },
+      { key:'game', name:'游戏', icon:'🎮',
+        desc:'版号供给 + 爆款周期：监管信号决定板块估值下限。',
+        falsify:'版号数量连续 3 个月环比下降 → 供给收缩，行业逻辑转防守',
+        items:[
+          mkItem({ label:'版号数量', ref:'ind:game_lic', unit:'款', dir:'above', green:100, yellow:80,
+            falsify:'单月 <60 款 → 政策收紧信号', action:'连续放量 + 新游流水超预期：板块贝塔向上' }),
+        ] },
+    ];
+    return pools.map(p => Object.assign({ id:uid(), desc:'', falsify:'', items:[] }, p,
+      { items: p.items.map(i => Object.assign({ unit:'' }, i)) }));
+  }
   function ensure(db){
     const m = db.macro = db.macro || {};
+    const SEED_VER = 8;   // seed 结构版本（新增指标/池时 +1）
+    // v7 下线的指标（无稳定自动源且无数据，卡片恒为空）：从用户库中移除，历史 CSV 不受影响
+    const REMOVED_KEYS = ['govbond', 'hhloan', 'prop_sale', 'indprofit', 'corecpi', 'etfflow', 'corploan', 'bdti'];
     // ---- 迁移0：最旧结构 DB.macro.indicators（扁平数组）→ groups 分组结构 ----
     if(!m.groups || !Array.isArray(m.groups)){
       const old = m.indicators;
@@ -243,9 +409,11 @@
         m.groups = gs;
         delete m.indicators;
       } else {
+        // 全新安装：seed 一步到位（含完整元数据 + 温度计池），后续迁移自然跳过
         const s = seed();
-        m.groups = s.groups; m.fedwatch = s.fedwatch;
-        m.seedDataVersion = 2;
+        m.groups = s.groups; m.fedwatch = s.fedwatch; m.pools = seedPools();
+        m.scores = { liquidity:0, growth:0, valuation:0 };
+        m.seedDataVersion = SEED_VER;
         return;
       }
     }
@@ -254,14 +422,14 @@
     (m.groups||[]).forEach(g => (g.indicators||[]).forEach(i => {
       const meta = KEY_META[i.key];
       if(meta){
+        // 注意：老数据的 direction 可能是 null（seed 中显式留空），用 == null 一并按映射补齐
         ['layer','importance','direction','scoreLayer'].forEach(k => {
-          if(i[k] === undefined && meta[k] !== undefined){ i[k] = meta[k]; changed = true; }
+          if(i[k] == null && meta[k] !== undefined){ i[k] = meta[k]; changed = true; }
         });
       }
       if(i.interpret === undefined){ i.interpret = ''; }
     }));
     // ---- 迁移2：合并 seed 新指标 + FedWatch（按 key 去重，只补缺失，版本化一次性执行） ----
-    const SEED_VER = 4;
     if((m.seedDataVersion || 0) < SEED_VER){
       const sv = seed();
       const byKey = {};
@@ -276,10 +444,38 @@
         });
       });
       if(!Array.isArray(m.fedwatch) || !m.fedwatch.length){ m.fedwatch = sv.fedwatch; changed = true; }
+      // ---- 迁移3（v6）：L1/L2 温度计池——按池 key 合并，已有池只补缺失的指标项 ----
+      if(!Array.isArray(m.pools)) m.pools = [];
+      const sp = seedPools();
+      sp.forEach(p => {
+        const ex = m.pools.find(x => x.key === p.key);
+        if(!ex){ m.pools.push(p); return; }
+        (p.items||[]).forEach(si => {
+          if(!(ex.items||[]).some(x => x.ref === si.ref && x.label === si.label)) ex.items.push(si);
+        });
+      });
       m.seedDataVersion = SEED_VER;
     }
+    m.pools = m.pools || [];
+    // BDTI 无稳定免费数据源已下线 → 幂等清理引用它的池项（指标本体不删，历史数据保留）
+    (m.pools).forEach(p => {
+      if(Array.isArray(p.items) && p.items.some(it => it.ref === 'ind:bdti')){
+        p.items = p.items.filter(it => it.ref !== 'ind:bdti'); changed = true;
+      }
+      // v8：旧「VLCC TCE」项为 TCE 美元/天口径（阈值 4万/2万），CT1 指数点数据源下阈值失真
+      // → 幂等移除旧标签项，迁移3 会按新标签「VLCC 运价 · CT1」补入校准后的项
+      if(Array.isArray(p.items) && p.items.some(it => it.ref === 'ind:vlcc_tce' && it.label === 'VLCC TCE')){
+        p.items = p.items.filter(it => !(it.ref === 'ind:vlcc_tce' && it.label === 'VLCC TCE')); changed = true;
+      }
+    });
     // ---- 打分手动修正值初始化（半自动温度计，二期） ----
     m.scores = m.scores || { liquidity:0, growth:0, valuation:0 };
+    // ---- v7：移除已下线指标（每次加载幂等执行，删空表） ----
+    (m.groups||[]).forEach(g => {
+      const before = (g.indicators||[]).length;
+      g.indicators = (g.indicators||[]).filter(i => REMOVED_KEYS.indexOf(i.key) < 0);
+      if(g.indicators.length !== before) changed = true;
+    });
     if(changed){ /* 有变更时由调用方 save() 持久化 */ }
   }
 
@@ -289,13 +485,21 @@
   function ind(name){ return allIndicators().find(i => i.key === name); }
 
   // 取指标最后一个值及其环比变化（相邻两个点的差值）
+  // 环比仅在相邻两期处于正常间隔内才有效（跨期断层如"2026-08"月度点接日度点，不能当上一期用）
   function latest2(i){
     const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
-    if(!pts.length) return { latest:null, prev:null, delta:null };
+    if(!pts.length) return { latest:null, prev:null, delta:null, date:null, prevDate:null, gap:null, contig:false };
     const latest = pts[pts.length-1];
     const prev = pts.length > 1 ? pts[pts.length-2] : null;
+    const ok = prev && prev.value != null && latest.value != null && !isNaN(prev.value) && !isNaN(latest.value);
+    let gap = null, contig = false;
+    if(ok){
+      gap = dayGap(prev.date, latest.date);
+      contig = (gap == null) ? true : (gap >= 0 && gap <= (CONTIG_DAYS[i.freq] || 62));
+    }
     return { latest: latest.value, prev: prev ? prev.value : null,
-      delta: prev ? latest.value - prev.value : null, date: latest.date };
+      delta: (ok && contig) ? latest.value - prev.value : null,
+      date: latest.date, prevDate: prev ? prev.date : null, gap, contig };
   }
   function fmtNum(n, unit, digits){
     if(n == null || n === '' || isNaN(n)) return '<span class="muted">—</span>';
@@ -309,22 +513,140 @@
     return ' <span class="' + cls + '" style="font-size:12px">' + sign + ' ' + Math.abs(delta).toFixed(2) + (unit||'') + '</span>';
   }
 
+  /* ----- 数据新鲜度（防止用陈旧数据打分/发信号） -----
+   * FRESH_DAYS：各频率允许的最大滞后天数（按"期末日"计，如 '2026-07' 从 7/31 起算）
+   * CONTIG_DAYS：相邻两期的最大正常间隔（超过则视为跨期断层，环比无效）
+   */
+  const FRESH_DAYS  = { '日度':7,  '周度':21, '月度':45,  '季度':120, '年度':400 };
+  const CONTIG_DAYS = { '日度':4,  '周度':21, '月度':62,  '季度':200, '年度':400 };
+  // 日期字符串 → 该期最后一天（'2026-08-29'→自身；'2026-08'→月末；'2026Q2'→季末；'2026'→年末）
+  function periodEndDate(s){
+    const str = String(s||'').trim();
+    let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+    m = str.match(/^(\d{4})-(\d{2})$/);
+    if(m) return new Date(+m[1], +m[2], 0);          // 该月最后一天
+    m = str.match(/^(\d{4})Q([1-4])$/);
+    if(m) return new Date(+m[1], +m[2]*3, 0);       // 该季最后一天
+    m = str.match(/^(\d{4})$/);
+    if(m) return new Date(+m[1], 12, 0);            // 12/31
+    return null;
+  }
+  // 最新数据距今的滞后天数（无法解析返回 null；未来日期按 0）
+  function staleness(i){
+    const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
+    if(!pts.length) return null;
+    const end = periodEndDate(pts[pts.length-1].date);
+    if(!end) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.max(0, Math.round((today - end) / 86400000));
+  }
+  // 数据是否够新：可参与温度计打分与方向信号；陈旧数据只展示、不发信号
+  function freshnessOk(i){
+    const s = staleness(i);
+    if(s == null) return false;
+    return s <= (FRESH_DAYS[i.freq] || 45);
+  }
+  // 滞后徽章（无数据或数据新鲜时返回空）
+  function staleBadge(i){
+    const s = staleness(i);
+    const lim = FRESH_DAYS[i.freq] || 45;
+    if(s == null || s <= lim) return '';
+    return '<span class="badge amber stale-tip" title="最新数据距今 ' + s + ' 天，超出「' +
+      esc(i.freq || '月度') + '」正常更新周期（' + lim + ' 天），已不参与温度计打分与轮动高亮，仅作参考">⚠ 滞后 ' + s + ' 天</span>';
+  }
+  /* seed 内置演示数据清单（key → 演示点日期）。
+   * 用途：识别"仍是示例数据"的指标——点数与清单完全一致即判定为未导入真实数据，
+   * 该类指标不参与温度计打分/轮动高亮，避免演示值冒充真实信号；
+   * 一旦导入真实 CSV 或手动补录新数据，点数变化即自动恢复参评。
+   */
+  const DEMO_POINTS = {
+    us10y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    real10y: ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    dxy:     ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    fed:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    lpr1y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    lpr5y:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    tsf:     ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    m1:      ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    m2:      ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    usdcny:  ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07','2026-08'],
+    pmi:     ['2024-03','2024-06','2024-09','2024-12','2025-03','2025-06','2025-09','2025-12','2026-03','2026-06','2026-07'],
+    pmi_new: ['2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    gdp:     ['2023Q1','2023Q2','2023Q3','2023Q4','2024Q1','2024Q2','2024Q3','2024Q4','2025Q1','2025Q2'],
+    exports: ['2024-06','2024-12','2025-06','2025-12','2026-06','2026-07'],
+    unemp:   ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06'],
+    cpi:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+    ppi:     ['2023-06','2023-12','2024-06','2024-12','2025-06','2025-12','2026-03','2026-06','2026-07'],
+  };
+  // 是否仍为"纯演示数据"（点数与演示清单完全一致；导入真实数据或补录后自动失效）
+  function isDemoOnly(i){
+    const ds = DEMO_POINTS[i.key];
+    if(!ds) return false;
+    const pts = i.points || [];
+    if(pts.length !== ds.length) return false;
+    const set = Object.create(null);
+    ds.forEach(d => { set[d] = 1; });
+    return pts.every(p => set[p.date]);
+  }
+  function demoBadge(i){
+    if(!isDemoOnly(i)) return '';
+    return '<span class="badge amber stale-tip" title="该指标目前仍是内置示例数据（尚未导入真实数据），不参与温度计打分与轮动高亮">示例数据</span>';
+  }
+  // 两个完整日期（YYYY-MM-DD）相差的天数；非完整日期返回 null
+  function dayGap(d1, d2){
+    const a = String(d1||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const b = String(d2||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!a || !b) return null;
+    return Math.round((Date.UTC(+b[1], +b[2]-1, +b[3]) - Date.UTC(+a[1], +a[2]-1, +a[3])) / 86400000);
+  }
+  // 日度指标「较前一日」的变化量（卡片内极简展示，细节放 title）
+  // 相邻两期若为连续日期（含跨周末 ≤4 天）视为「前一日」，否则 title 里标注真实对比日期
+  function dailyChangeHtml(i, l2){
+    if(l2.delta == null || isNaN(l2.delta) || !l2.prevDate) return '';
+    const d = l2.delta;
+    const cls = d > 0 ? 'up' : (d < 0 ? 'down' : 'muted');
+    const digits = Math.abs(d) < 0.01 ? 3 : 2;                // 微小变化（如汇率）保留 3 位，避免舍入失真
+    const abs = (d > 0 ? '+' : '') + d.toFixed(digits);
+    // title：完整对比信息（含 bp / 相对%）
+    const gap = dayGap(l2.prevDate, l2.date);
+    const when = (gap != null && gap <= 4) ? '较前一日' : ('较 ' + l2.prevDate);
+    let detail = '';
+    if(i.unit === '%'){                                       // 利率类：附带基点
+      const bp = Math.round(d * 1000) / 10;
+      if(bp) detail = '，' + (bp > 0 ? '+' : '') + bp + 'bp';
+    } else if(l2.prev != null && Math.abs(l2.prev) > 1e-9){   // 价格/指数/成交额：附带相对变化
+      const pct = d / Math.abs(l2.prev) * 100;
+      detail = '，' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+    }
+    const tip = when + '（' + l2.prevDate + '：' + Number(l2.prev).toFixed(2) + ' → ' + Number(l2.latest).toFixed(2) + '）' + abs + detail;
+    return '<span class="d-chg ' + cls + '" title="' + esc(tip) + '">' + abs + '</span>';
+  }
+
   /* ----- 折线趋势图（纯 SVG，含 0 轴参考线与均值参考线） ----- */
   function lineChart(i, opts){
     // 按日期筛选（近1/3/5/10年/全部）
     const pts = filterByRange(i.points).slice().sort((a,b) => a.date.localeCompare(b.date));
     if(pts.length < 2) return '<div class="muted" style="text-align:center;padding:20px;font-size:13px">该区间内数据点不足，无法绘制趋势图</div>';
 
-    const w = 640, h = 210, pad = {l:50, r:16, t:18, b:32};
+    const w = 640, h = 150, pad = {l:46, r:14, t:14, b:26};
     const color = opts && opts.color ? opts.color : '#5b64f2';
     const mid = i.id || ('m' + Date.now() + '_' + (i.key||''));
     let vals = pts.map(p => p.value);
     const allVals = vals.filter(v => v != null && !isNaN(v));
     if(!allVals.length) return '<div class="muted">暂无有效数据</div>';
     let minV = Math.min(...allVals), maxV = Math.max(...allVals);
-    // 若所有值同号且为正，底轴从 0 开始（便于观察量级）
-    const allPos = allVals.every(v => v >= 0);
-    if(allPos) minV = 0;
+    // 纵轴自适应：波动幅度（极差/最大值）≥40% 的正值序列保留 0 基线（便于观察量级，
+    // 如 CPI 同比 0~3%）；窄幅波动指标（如 PMI 49~52、M2 同比个位数）若从 0 起画会被
+    // 压成直线——改为取数据范围并上下各留 15% padding，充分反映波动
+    const span = maxV - minV;
+    if(minV >= 0 && span / Math.abs(maxV || 1) >= 0.4){
+      minV = 0;
+    }else{
+      const p = span * 0.15 || Math.abs(maxV) * 0.05 || 1;
+      minV -= p; maxV += p;
+    }
     // 指标若为"比值/率"，加一条均值虚线做参考
     const avg = allVals.reduce((s,v)=>s+v,0) / allVals.length;
     const range = (maxV - minV) || 1;
@@ -433,6 +755,8 @@
       '<div class="sec-title"><h2>' + esc(i.name) + '</h2>' +
       '<div class="q-actions">' +
         impBadge(i.importance) +
+        demoBadge(i) +
+        staleBadge(i) +
         percentileBadge(i) +
         '<span class="badge ' + (l2.delta > 0 ? 'up-badge' : (l2.delta < 0 ? 'down-badge' : 'gray')) + '" style="font-size:11px">' + (l2.delta > 0 ? '↑' : (l2.delta < 0 ? '↓' : '→')) + '</span>' +
         '<button class="icon-btn" title="编辑指标" data-action="macro.edit" data-id="' + i.id + '">✎</button>' +
@@ -463,21 +787,66 @@
     { key:'growth',    name:'经济',   icon:'🏭', desc:'中国经济强不强（≈企业盈利）' },
     { key:'valuation', name:'估值',   icon:'💹', desc:'A股贵不便宜、钱进没进股市' },
   ];
+  /* ===== 绝对水平阈值（水平票配置） =====
+   * 有些指标"方向好"不等于"状态好"：PMI 环比回升但仍在荣枯线下 = 仍是收缩；
+   * 美债收益率下行但绝对水平仍高 = 流动性仍偏紧。这里为这类指标配置绝对区间：
+   *   lo/hi 之间 = 中性（不投票）；≥hi 或 ≤lo 各投一票（好坏由指标 direction 推导：
+   *   up_good 指标 ≥hi 为好、≤lo 为坏；down_good 指标（利率类）反之——低=宽松=好）。
+   * 未配置的指标维持原样：只投方向票。
+   */
+  const LEVELS = {
+    us2y:    { lo:3.0,  hi:4.2,  loTag:'宽松',   hiTag:'紧缩' },
+    us10y:   { lo:3.5,  hi:4.5,  loTag:'宽松',   hiTag:'紧缩' },
+    us30y:   { lo:4.0,  hi:5.0,  loTag:'宽松',   hiTag:'紧缩' },
+    real10y: { lo:1.0,  hi:2.0,  loTag:'宽松',   hiTag:'紧缩' },
+    dxy:     { lo:95,   hi:103,  loTag:'弱美元', hiTag:'强美元' },
+    fed:     { lo:2.5,  hi:4.5,  loTag:'宽松',   hiTag:'限制性' },
+    dr007:   { lo:1.6,  hi:2.1,  loTag:'资金松', hiTag:'资金紧' },
+    cn1y:    { lo:1.45, hi:1.9,  loTag:'资金松', hiTag:'资金紧' },
+    lpr1y:   { lo:3.0,  hi:3.6,  loTag:'宽松',   hiTag:'紧缩' },
+    lpr5y:   { lo:3.5,  hi:4.0,  loTag:'宽松',   hiTag:'紧缩' },
+    pmi:     { lo:49.8, hi:50.2, loTag:'收缩区间', hiTag:'扩张区间' },
+    pmi_new: { lo:49.8, hi:50.2, loTag:'收缩区间', hiTag:'扩张区间' },
+  };
   function calcScore(tk){
     const list = allIndicators().filter(i => i.scoreLayer === tk && i.direction);
-    let good = 0, bad = 0, contrib = [];
+    let good = 0, bad = 0, contrib = [], skipped = [];
     list.forEach(i => {
+      // ① 仍是内置示例数据：不参评（导入真实数据后自动恢复）
+      if(isDemoOnly(i)){ skipped.push(i.name + '（示例数据）'); return; }
+      // ② 数据滞后（超出该频率正常更新周期）：不参评，避免用一年前的环比投票
+      if(!freshnessOk(i)){
+        const s = staleness(i);
+        skipped.push(i.name + (s == null ? '（无数据）' : '（滞后 ' + s + ' 天）'));
+        return;
+      }
       const l2 = latest2(i);
-      if(l2.delta == null || isNaN(l2.delta) || l2.delta === 0) return;
-      const isGood = i.direction === 'up_good' ? l2.delta > 0 : l2.delta < 0;
-      if(isGood) good++; else bad++;
-      contrib.push({ name:i.name, isGood, delta:l2.delta });
+      // 票① 方向票（环比 delta）：方向"好"+1、"坏"-1（原有逻辑）
+      if(l2.delta != null && !isNaN(l2.delta) && l2.delta !== 0){
+        const isGood = i.direction === 'up_good' ? l2.delta > 0 : l2.delta < 0;
+        if(isGood) good++; else bad++;
+        contrib.push({ name:i.name, isGood, delta:l2.delta });
+      }
+      // 票② 水平票（绝对值）：配置了 LEVELS 的指标按绝对位置再投一票。
+      //     方向好但水平仍差（如 PMI 环比回升但仍在荣枯线下）时两票对冲 → 中性，
+      //     避免"衰退中的反弹"被误读成"经济向好"。
+      const lv = LEVELS[i.key];
+      if(lv && l2.latest != null && !isNaN(Number(l2.latest))){
+        const v = Number(l2.latest);
+        let lvGood = null, tag = '';
+        if(v >= lv.hi){ lvGood = (i.direction === 'up_good'); tag = lv.hiTag; }
+        else if(v <= lv.lo){ lvGood = (i.direction !== 'up_good'); tag = lv.loTag; }
+        if(lvGood !== null){
+          if(lvGood) good++; else bad++;
+          contrib.push({ name:i.name, isGood:lvGood, level:v, levelTag:tag });
+        }
+      }
     });
     const n = good + bad;
     const auto = n ? Math.round(good / n * 100) : null;
     const manual = Number((DB.macro.scores || {})[tk]) || 0;
     const final = auto == null ? null : Math.max(0, Math.min(100, auto + manual));
-    return { auto, manual, final, good, bad, n, contrib };
+    return { auto, manual, final, good, bad, n, contrib, skipped };
   }
   function scoreColor(v){
     if(v == null) return 'var(--gray)';
@@ -494,7 +863,8 @@
         '<span class="th-val" style="color:' + c + '">' + (s.final == null ? '—' : s.final) + '</span></div>' +
         '<div class="th-bar"><div class="th-fill" style="width:' + barW + '%;background:' + c + '"></div>' +
         '<div class="th-mid"></div></div>' +
-        '<div class="th-sub muted"><span class="th-sub-txt" title="自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 ' + (s.manual > 0 ? '+' : '') + s.manual + ' · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 项参评（好' + s.good + '/坏' + s.bad + '）</span>' +
+        '<div class="th-sub muted"><span class="th-sub-txt" title="自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 ' + (s.manual > 0 ? '+' : '') + s.manual + ' · ' + s.n + ' 票参评（好' + s.good + '/坏' + s.bad + '）' + (s.skipped.length ? ' · 未参评：' + esc(s.skipped.join('、')) : '') + '">自动 ' + (s.auto == null ? '—' : s.auto) + ' · 人工 <b>' + (s.manual > 0 ? '+' : '') + s.manual + '</b> · ' + s.n + ' 票参评（好' + s.good + '/坏' + s.bad + '）</span>' +
+        (s.skipped.length ? '<span class="stale-tip" title="未参评：' + esc(s.skipped.join('、')) + '">' + s.skipped.length + '项未参评</span>' : '') +
         '<span class="th-adj">' +
           '<button class="icon-btn" title="人工下调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="-5">−</button>' +
           '<button class="icon-btn" title="人工上调 5" data-action="macro.scoreAdj" data-v="' + t.key + '" data-d="5">＋</button>' +
@@ -504,11 +874,49 @@
           '<details class="th-detail"><summary>参评明细（' + s.n + '）</summary>' +
           s.contrib.map(c => '<div class="th-contrib"><span>' + esc(c.name) + '</span>' +
             '<span class="' + (c.isGood ? 'good' : 'bad') + '">' + (c.isGood ? '好' : '坏') +
-            ' <small>' + (c.delta > 0 ? '+' : '') + c.delta.toFixed(2) + '</small></span></div>').join('') +
+            (c.delta != null
+              ? ' <small>' + (c.delta > 0 ? '+' : '') + c.delta.toFixed(2) + '</small>'
+              : ' <small>' + (c.level != null ? c.level.toFixed(2) + ' ' + esc(c.levelTag || '') : '') + '</small>') +
+            '</span></div>').join('') +
           '</details>' : '') +
         '</div>';
     });
     return h + '</div>';
+  }
+
+  /* ===== 温度计依据（Regime 卡片的数据支撑） =====
+   * 展示分数由哪些指标、以什么方向投出，以及未参评项及原因，
+   * 避免只看到一个 0/100 的极端分数却不知道依据。
+   */
+  function scoreReliability(s){
+    if(s.n === 0) return '⚠ 无有效参评数据：请补齐数据或更新滞后指标，此温度计暂不可用';
+    if(s.n < 3) return '⚠ 仅 ' + s.n + ' 票参评，样本过少，分数与结论仅供参考';
+    if(s.n < 5) return '提示：仅 ' + s.n + ' 票参评，样本偏少';
+    if(s.good === 0 || s.bad === 0) return '提示：参评指标全部同向，分数达边界（' + (s.good ? '全好' : '全坏') + '），注意样本代表性';
+    return '';
+  }
+  function scoreBasisHtml(key, name){
+    const s = calcScore(key);
+    const items = s.contrib.map(c => {
+      const isLv = c.delta == null;
+      const tip = isLv
+        ? (c.isGood ? '绝对水平有利' : '绝对水平不利')
+        : (c.isGood ? '方向有利' : '方向不利');
+      const val = isLv
+        ? (c.level != null ? c.level.toFixed(2) + (c.levelTag ? '·' + c.levelTag : '') : '')
+        : (c.delta > 0 ? '+' : '') + c.delta.toFixed(2);
+      return '<span class="qb-item ' + (c.isGood ? 'qb-good' : 'qb-bad') + '" title="' + tip + '">' +
+        esc(c.name) + ' ' + val + '</span>';
+    }).join('');
+    const rel = scoreReliability(s);
+    return '<div class="qb">' +
+      '<div class="qb-line"><b>' + esc(name) + ' ' + (s.final == null ? '—' : s.final) + '</b>' +
+      '<span class="qb-sub">参评 ' + s.n + ' 项（好' + s.good + ' / 坏' + s.bad + '）' +
+      (s.manual ? ' · 人工修正 ' + (s.manual > 0 ? '+' : '') + s.manual : '') + '</span></div>' +
+      '<div class="qb-items">' + (items || '<span class="muted" style="font-size:11px">无有效参评指标</span>') + '</div>' +
+      (s.skipped.length ? '<div class="qb-skip">未参评 ' + s.skipped.length + ' 项：' + esc(s.skipped.slice(0, 8).join('、')) + (s.skipped.length > 8 ? ' 等' : '') + '</div>' : '') +
+      (rel ? '<div class="qb-warn">' + esc(rel) + '</div>' : '') +
+      '</div>';
   }
 
   /* ===== Regime 四象限：盈利(Growth) × 估值(Valuation) ===== */
@@ -524,18 +932,23 @@
     const cell = (id, t, s) => '<div class="quad-cell' + (cur===id ? ' quad-cur' : '') + '"><b>' + t + '</b><span>' + s + '</span></div>';
     return '<div class="card macro-quad"><div class="sec-title" style="margin-bottom:8px">' +
       '<h2>🧭 A股 Regime <span class="muted" style="font-weight:400;font-size:12px">经济 ' + g.final + ' × 估值 ' + v.final + '（以 50 为界）</span></h2></div>' +
-      '<div class="quad-grid">' +
-      cell('q-lt','盈利↑ 估值↓','结构性行情') +
-      cell('q-rb','盈利↑ 估值↑','🟢 最强牛市') +
-      cell('q-rt','盈利↓ 估值↓','🔴 最危险') +
-      cell('q-lb','盈利↓ 估值↑','流动性牛市') +
-      '</div><div class="quad-verdict">' + esc(warn) + '</div></div>';
+      '<div class="regime-layout">' +
+        '<div class="quad-grid">' +
+        cell('q-lt','盈利↑ 估值↓','结构性行情') +
+        cell('q-rb','盈利↑ 估值↑','🟢 最强牛市') +
+        cell('q-rt','盈利↓ 估值↓','🔴 最危险') +
+        cell('q-lb','盈利↓ 估值↑','流动性牛市') +
+        '</div>' +
+        '<div class="qb-grid">' + scoreBasisHtml('growth', '经济') + scoreBasisHtml('valuation', '估值') + '</div>' +
+      '</div>' +
+      '<div class="quad-verdict">' + esc(warn) + '</div></div>';
   }
 
   /* ===== 变化速度预警 ===== */
   function speedWarn(i){
     const pts = (i.points||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
     if(pts.length < 2) return '';
+    if(!freshnessOk(i)) return '';   // 数据滞后时不发预警，避免用陈旧变化报警
     const l2 = latest2(i);
     const out = [];
     // 汇率：近5期内变化超 ±1.5%（USDCNY 上涨 = 人民币贬值）
@@ -568,20 +981,19 @@
     { key:'cpi',      dir:1,  label:'CPI ↑',      sectors:'消费' },
     { key:'oil',      dir:1,  label:'原油 ↑',     sectors:'石油 · 化工' },
     { key:'copper',   dir:1,  label:'铜 ↑',       sectors:'有色 · 电力设备' },
-    { key:'prop_sale',dir:1,  label:'地产销售 ↑', sectors:'银行 · 地产 · 建材 · 家电' },
     { key:'exports',  dir:1,  label:'出口 ↑',     sectors:'出口制造 · 机械 · 电子' },
   ];
   function rotationTable(){
     // 判断某行当前是否处于"受益"状态
     const active = r => {
       const i = ind(r.key);
-      if(!i) return false;
+      if(!i || isDemoOnly(i) || !freshnessOk(i)) return false;   // 示例数据/数据滞后：不高亮，避免误导
       const l2 = latest2(i);
       if(l2.delta == null || isNaN(l2.delta) || l2.delta === 0) return false;
       return r.dir === 1 ? l2.delta > 0 : l2.delta < 0;
     };
     let h = '<div class="card macro-rot"><div class="sec-title" style="margin-bottom:8px">' +
-      '<h2>🔄 宏观 → 行业轮动映射 <span class="muted" style="font-weight:400;font-size:12px">高亮 = 该方向当前成立（按最新环比）</span></h2></div>' +
+      '<h2>🔄 宏观 → 行业轮动映射 <span class="muted" style="font-weight:400;font-size:12px">高亮 = 该方向当前成立（按最新环比；数据滞后的指标不参与）</span></h2></div>' +
       '<div class="wide-table-wrap"><table class="val-table"><thead><tr><th>宏观方向</th><th>受益行业</th></tr></thead><tbody>';
     ROTATION.forEach(r => {
       const on = active(r);
@@ -598,18 +1010,23 @@
     const keys = DAILY_KEYS.filter(k => ind(k));
     if(!keys.length) return '';
     let h = '<div class="card macro-daily"><div class="sec-title" style="margin-bottom:10px">' +
-      '<h2>⏱ 每日速览 <span class="muted" style="font-weight:400;font-size:12px">每日 5 分钟 · 方向比绝对值重要</span></h2></div>';
+      '<h2>⏱ 每日速览 <span class="muted" style="font-weight:400;font-size:12px">每日 5 分钟 · 方向 × 绝对位置 双口径</span></h2></div>';
     h += '<div class="daily-grid">';
     keys.forEach(k => {
       const i = ind(k);
       const l2 = latest2(i);
       const cls = l2.delta > 0 ? 'up' : (l2.delta < 0 ? 'down' : '');
       const arrow = l2.delta > 0 ? '↑' : (l2.delta < 0 ? '↓' : '—');
-      h += '<div class="daily-item" title="' + esc(i.interpret || i.desc || '') + '">' +
+      const chg = i.freq === '日度' ? dailyChangeHtml(i, l2) : '';
+      const st = staleness(i);
+      const demo = isDemoOnly(i);
+      const stale = !demo && st != null && st > (FRESH_DAYS[i.freq] || 45);
+      const warn = demo ? '（⚠ 仍为内置示例数据，变化量仅供参考）' : (stale ? '（⚠ 数据滞后 ' + st + ' 天，变化量仅供参考）' : '');
+      h += '<div class="daily-item' + ((stale || demo) ? ' is-stale' : '') + '" title="' + esc(i.interpret || i.desc || '') + warn + '">' +
         '<div class="d-name">' + esc(i.name) + '</div>' +
         '<div class="d-val ' + cls + '">' + (l2.latest != null ? Number(l2.latest).toFixed(2) : '—') +
-        '<small>' + esc(i.unit || '') + ' ' + arrow + '</small></div>' +
-        '<div class="d-date muted">' + esc(l2.date || '') + '</div></div>';
+        '<small>' + esc(i.unit || '') + (chg ? '' : ' ' + arrow) + '</small></div>' +
+        '<div class="d-date muted">' + esc(l2.date || '') + chg + '</div></div>';
     });
     h += '</div>';
     // FedWatch 概率摘要（下一次会议）
@@ -761,12 +1178,16 @@
     const cell = (id, t, s) => '<div class="quad-cell' + (cur===id ? ' quad-cur' : '') + '"><b>' + t + '</b><span>' + s + '</span></div>';
     return '<div class="card macro-quad macro-regime"><div class="sec-title" style="margin-bottom:8px">' +
       '<h2>🧭 宏观 Regime <span class="muted" style="font-weight:400;font-size:12px">流动性 ' + l.final + ' × 经济 ' + g.final + '（以 50 为界）</span></h2></div>' +
-      '<div class="quad-grid">' +
-      cell('r2','流动性宽松 · 经济弱','宽松交易 / 成长占优') +
-      cell('r1','流动性宽松 · 经济强','🟢 宽松复苏') +
-      cell('r4','流动性紧缩 · 经济弱','🔴 紧缩衰退') +
-      cell('r3','流动性紧缩 · 经济强','价值/周期占优') +
-      '</div><div class="quad-verdict">' + esc(warn) + '</div></div>';
+      '<div class="regime-layout">' +
+        '<div class="quad-grid">' +
+        cell('r2','流动性宽松 · 经济弱','宽松交易 / 成长占优') +
+        cell('r1','流动性宽松 · 经济强','🟢 宽松复苏') +
+        cell('r4','流动性紧缩 · 经济弱','🔴 紧缩衰退') +
+        cell('r3','流动性紧缩 · 经济强','价值/周期占优') +
+        '</div>' +
+        '<div class="qb-grid">' + scoreBasisHtml('liquidity', '流动性') + scoreBasisHtml('growth', '经济') + '</div>' +
+      '</div>' +
+      '<div class="quad-verdict">' + esc(warn) + '</div></div>';
   }
 
   // M1 − M2 剪刀差（建议§14）：资金活化程度观测
@@ -798,18 +1219,277 @@
     return '<span class="fw-delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '↑' : '↓') + Math.abs(d) + '</span>';
   }
 
+  /* ===== L1/L2 温度计池：阈值红黄绿灯体系 =====
+   * 与上面的「环比投票温度计」互补：投票温度计回答"方向"，阈值灯回答"位置/边界"。
+   * 灯判定：
+   *   dir='above'：值 ≥ green 绿 / ≥ yellow 黄 / 否则红（越高越好）
+   *   dir='below'：值 ≤ green 绿 / ≤ yellow 黄 / 否则红（越低越好）
+   *   dir='up'   ：环比 ↑ 绿 / ↓ 红（价格类高频指标用环比，不设绝对阈值）
+   *   dir='down' ：环比 ↓ 绿 / ↑ 红
+   *   无数据 → ⚪ 待更新（不参与池汇总） */
+  const LAMP = { green:'🟢', yellow:'🟡', red:'🔴', none:'⚪' };
+  function findPool(pid){ return (DB.macro.pools||[]).find(p => p.id === pid) || null; }
+  function poolItemValue(item){
+    if(item.ref === 'fedwatch'){
+      const fw = (DB.macro.fedwatch||[]).slice().sort((a,b) => String(a.meeting).localeCompare(String(b.meeting)));
+      const n = fw[fw.length-1];
+      if(!n) return { val:null };
+      return { val:n.hike, date:n.meeting + ' 会议',
+        delta:(n.prev && n.prev.hike != null) ? (n.hike - n.prev.hike) : null };
+    }
+    const m = /^ind:(.+)$/.exec(item.ref || '');
+    const i = m ? ind(m[1]) : null;
+    if(!i) return { val:null, missing:true };
+    const l2 = latest2(i);
+    return { val:l2.latest, date:l2.date, delta:l2.delta, ind:i };
+  }
+  function lampOf(item){
+    const r = poolItemValue(item);
+    if(r.val == null) return Object.assign({ lamp:'none' }, r);
+    const v = Number(r.val);
+    let lamp = 'red';
+    if(item.dir === 'above'){ lamp = v >= item.green ? 'green' : (v >= item.yellow ? 'yellow' : 'red'); }
+    else if(item.dir === 'below'){ lamp = v <= item.green ? 'green' : (v <= item.yellow ? 'yellow' : 'red'); }
+    else if(item.dir === 'up'){ lamp = r.delta == null ? 'none' : (r.delta > 0 ? 'green' : (r.delta < 0 ? 'red' : 'yellow')); }
+    else if(item.dir === 'down'){ lamp = r.delta == null ? 'none' : (r.delta < 0 ? 'green' : (r.delta > 0 ? 'red' : 'yellow')); }
+    else { lamp = 'none'; }
+    return Object.assign({ lamp }, r);
+  }
+  function poolWorst(pool){
+    const lamps = (pool.items||[]).map(it => lampOf(it).lamp);
+    if(lamps.indexOf('red') >= 0) return 'red';
+    if(lamps.indexOf('yellow') >= 0) return 'yellow';
+    if(lamps.indexOf('green') >= 0) return 'green';
+    return 'none';
+  }
+  function fmtVal(v){
+    if(v == null || isNaN(Number(v))) return '—';
+    return Number(v).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+  // 数值 + 趋势箭头（环比 delta 可用时显示）
+  function trendHtml(r){
+    if(r.delta == null || isNaN(Number(r.delta)) || Number(r.delta) === 0) return '';
+    const d = Number(r.delta);
+    const cls = d > 0 ? 'var(--up,#c0392b)' : 'var(--down,#27ae60)';
+    return ' <span style="font-size:11px;color:' + cls + '">' + (d > 0 ? '▲' : '▼') + fmtVal(Math.abs(d)) + '</span>';
+  }
+  // 动能徽章：从最新往前数连续同向变化的期数（≥2 期才显示），连涨红/连跌绿
+  function streakHtml(points){
+    const vs = (points||[]).filter(p => p.value != null && !isNaN(Number(p.value))).map(p => Number(p.value));
+    if(vs.length < 3) return '';
+    let n = 0, dir = 0;
+    for(let i = vs.length - 1; i > 0; i--){
+      const d = vs[i] - vs[i-1];
+      if(d === 0) break;
+      const s = d > 0 ? 1 : -1;
+      if(dir === 0) dir = s;
+      else if(s !== dir) break;
+      n++;
+    }
+    if(n < 2) return '';
+    return ' <span class="badge ' + (dir > 0 ? 'red' : 'green') + '" style="font-size:10px" title="最新值起连续同向变化的期数（动能）">' +
+      (dir > 0 ? '🔥连涨' : '🧊连跌') + n + '期</span>';
+  }
+  // 单元格数值：优先用指标自己的单位，item.unit 仅作覆盖
+  function itemUnit(item, r){ return item.unit || (r.ind && r.ind.unit) || ''; }
+  function lampSummaryText(status){
+    return status === 'red' ? '有红灯' : (status === 'yellow' ? '有黄灯' : (status === 'green' ? '全绿' : '待更新'));
+  }
+  function l1Conclusion(red, yellow){
+    if(red >= 3) return '🔴×' + red + ' 宏观对成长股全面逆风——防守优先，先降仓位弹性再看个股';
+    if(red >= 2) return '宏观逆风明显：控制总仓位，红灯指向的方向坚决回避';
+    if(red === 1) return '宏观中性偏谨慎：避开红灯项压制的方向，其余按个股逻辑执行';
+    if(yellow) return '宏观中性：暂无红灯，盯住黄灯项的边际变化';
+    return '宏观顺风：环境不构成约束，按行业池与个股纪律进攻';
+  }
+  /* ----- 数据自动同步：进入宏观雷达时自动拉取仓库 CSV（http/https 下可用） -----
+   * file:// 打开时浏览器拦截 fetch → 给出明确的「导入全部」指引（FileReader 不受限制）。 */
+  let macroAutoSynced = false;
+  function maybeAutoSync(){
+    if(macroAutoSynced) return;
+    macroAutoSynced = true;
+    if(location.protocol === 'file:'){ state.macroSyncHint = true; return; }
+    fetch('data/macro/宏观经济_全部数据.csv', { cache: 'no-store' })
+      .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(t => {
+        const r = csvToAllGroups(parseCsvSimple(t));
+        if(r.points){ save(); render(); toast('宏观雷达已自动同步仓库数据（写入 ' + r.points + ' 条）'); }
+      })
+      .catch(() => { state.macroSyncHint = true; });
+  }
+  /* ----- 迷你走势图（近 N 期）+ 周期位置分位：让"当前处于周期什么位置"一眼可见 ----- */
+  function _sparkWindow(points, n){
+    return (points||[]).filter(p => p.value != null && !isNaN(Number(p.value)))
+      .slice(-n).map(p => Number(p.value));
+  }
+  function sparkSvg(points, w, h, n){
+    const vs = _sparkWindow(points, n || 10);
+    if(vs.length < 2) return '';
+    const mn = Math.min.apply(null, vs), mx = Math.max.apply(null, vs);
+    const rng = (mx - mn) || 1;
+    const step = w / (vs.length - 1);
+    const xy = vs.map((v, i) => (i * step).toFixed(1) + ',' + (h - 2 - (v - mn) / rng * (h - 4)).toFixed(1));
+    const up = vs[vs.length - 1] >= vs[0];
+    return '<svg width="' + w + '" height="' + h + '" style="vertical-align:middle;overflow:visible;flex:none">' +
+      '<polyline points="' + xy.join(' ') + '" fill="none" stroke="' +
+      (up ? 'var(--up,#c0392b)' : 'var(--down,#27ae60)') + '" stroke-width="1.5"/>' +
+      '</svg>';
+  }
+  // 最新值在近 N 期中的分位（0=区间最低，100=区间最高）；样本不足返回 null
+  function windowPct(points, n){
+    const vs = _sparkWindow(points, n || 10);
+    if(vs.length < 3) return null;
+    const last = vs[vs.length - 1];
+    const below = vs.filter(v => v < last).length;
+    return Math.round(below / (vs.length - 1) * 100);
+  }
+  // 周期位置文字：分位 → 白话解读
+  function cyclePosText(pct, dir){
+    if(pct == null) return '';
+    if(dir === 'below'){   // 越低越好的指标（如美债利率）：高分位反而是压力位
+      if(pct >= 80) return '近10期 ' + pct + '% 分位（区间顶部·压力区）';
+      if(pct <= 20) return '近10期 ' + pct + '% 分位（区间底部·缓解区）';
+      return '近10期 ' + pct + '% 分位（区间中位）';
+    }
+    if(pct >= 80) return '近10期 ' + pct + '% 分位（区间顶部·过热警惕）';
+    if(pct <= 20) return '近10期 ' + pct + '% 分位（区间底部·左侧机会）';
+    return '近10期 ' + pct + '% 分位（区间中位）';
+  }
+  function poolsHtml(){
+    const pools = DB.macro.pools || [];
+    const l1 = pools.find(p => p.fixed) || null;
+    const l2 = pools.filter(p => p !== l1);
+    let h = '';
+    /* ---- L1 宏观温度计（天气层） ---- */
+    if(l1){
+      const rows = (l1.items||[]).map(it => ({ it, r: lampOf(it) }));
+      const red = rows.filter(x => x.r.lamp === 'red').length;
+      const yellow = rows.filter(x => x.r.lamp === 'yellow').length;
+      const green = rows.filter(x => x.r.lamp === 'green').length;
+      const worst = red ? 'red' : (yellow ? 'yellow' : (green ? 'green' : 'none'));
+      h += '<div class="card macro-quad" style="margin-top:16px">' +
+        '<div class="sec-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<h2 style="margin:0">🌡️ ' + esc(l1.name) + '</h2>' +
+          '<span class="badge ' + (worst === 'red' ? 'red' : (worst === 'yellow' ? 'amber' : 'green')) + '">' +
+            '红 ' + red + ' · 黄 ' + yellow + ' · 绿 ' + green + '</span>' +
+          '<span class="muted" style="font-weight:400;font-size:12px">天气层 · 影响全部持仓</span>' +
+          '<span style="flex:1"></span>' +
+          '<button class="btn ghost sm" data-action="macro.poolItemAdd" data-pid="' + l1.id + '">＋ 指标</button>' +
+        '</div>' +
+        '<div class="muted" style="font-size:12px;margin-bottom:10px">' + esc(l1.desc || '') + '</div>' +
+        '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
+          '<th>灯</th><th style="min-width:110px">指标</th><th>最新值</th><th style="min-width:150px">阈值口径</th><th style="min-width:220px">证伪线</th><th style="min-width:220px">触发动作</th><th></th>' +
+        '</tr></thead><tbody>';
+      rows.forEach(x => {
+        const it = x.it, r = x.r;
+        const th = (it.dir === 'above' ? '≥' + fmtVal(it.green) + ' 绿 / ≥' + fmtVal(it.yellow) + ' 黄'
+          : it.dir === 'below' ? '≤' + fmtVal(it.green) + ' 绿 / ≤' + fmtVal(it.yellow) + ' 黄'
+          : it.dir === 'up' ? '环比↑ 绿 / ↓ 红' : '环比↓ 绿 / ↑ 红');
+        h += '<tr>' +
+          '<td style="font-size:15px" title="' + esc(it.falsify || '') + '">' + LAMP[r.lamp] + '</td>' +
+          '<td><b>' + esc(it.label) + '</b>' + (it.note ? '<div class="muted" style="font-size:11px">' + esc(it.note) + '</div>' : '') + '</td>' +
+          '<td style="white-space:nowrap"><b style="font-size:14px">' + fmtVal(r.val) + '</b>' +
+            (itemUnit(it, r) ? '<span class="muted" style="font-size:11px"> ' + esc(itemUnit(it, r)) + '</span>' : '') + trendHtml(r) +
+            (r.ind ? streakHtml(r.ind.points) : '') +
+            (r.ind ? ' ' + sparkSvg(r.ind.points, 72, 20) : '') +
+            (r.date ? '<div class="muted" style="font-size:11px">' + esc(r.date) + (r.ind ? ' · ' + esc(cyclePosText(windowPct(r.ind.points, 10), it.dir)) : '') + '</div>' : '') + '</td>' +
+          '<td class="muted" style="font-size:12px">' + esc(th) + '</td>' +
+          '<td class="muted" style="font-size:12px">' + (it.falsify ? esc(it.falsify) : '—') + '</td>' +
+          '<td style="font-size:12px">' + (it.action ? esc(it.action) : '—') + '</td>' +
+          '<td class="actions-cell" style="white-space:nowrap">' +
+            '<button class="icon-btn" title="编辑" data-action="macro.poolItemEdit" data-pid="' + l1.id + '" data-iid="' + it.id + '">✎</button>' +
+            '<button class="icon-btn" title="移除" data-action="macro.poolItemDel" data-pid="' + l1.id + '" data-iid="' + it.id + '">✕</button></td>' +
+        '</tr>';
+      });
+      h += '</tbody></table></div>' +
+        '<div style="font-size:13px;margin-top:10px;padding:8px 12px;background:var(--bg2,#f6f7f9);border-radius:8px">' +
+          '<b>→ 结论：</b>' + l1Conclusion(red, yellow) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:6px">⚪ = 数据待更新（去对应指标卡或「⚡ 每日快捷录入」补数）。灯体系回答"位置"，三温度计回答"方向"，两者结合再看 Regime。</div>' +
+        '</div>';
+    }
+    /* ---- L2 行业温度计（季节层） ---- */
+    h += '<div class="sec-title" style="margin:20px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<h2 style="margin:0">🧩 L2 · 行业温度计</h2>' +
+      '<span class="muted" style="font-weight:400;font-size:12px">季节层 · 决定板块轮动 · 每池绑定阈值 + 证伪线 + 触发动作</span>' +
+      '<span style="flex:1"></span>' +
+      '<button class="btn ghost sm" data-action="macro.poolAdd">＋ 新增行业池</button></div>' +
+      '<div class="muted" style="font-size:11px;margin:0 0 10px">读法：🟢🟡🔴 回答「现在能不能碰」，🔥/🧊 <b>连涨/连跌 N 期</b> = 动能，📉 迷你走势 + <b>近10期分位</b> 回答「处于周期什么位置」——' +
+      '低位连涨 = 上行早期（右侧加仓窗口），高分位滞涨 = 顶部区（只减不加）。⏳ 待录入 = 宏观页「⬆ 导入全部」同步仓库 CSV，或到第六层指标卡录入（标「替代」的行用本地财报自动观测，原口径项保持手动）。</div>';
+    if(!l2.length){
+      h += '<div class="card"><div class="empty">还没有行业池。点「＋ 新增行业池」把你在跟踪的板块加进来（数据源用第六层「行业高频」指标或任意宏观指标）。</div></div>';
+      return h;
+    }
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:14px">';
+    l2.forEach(p => {
+      const worst = poolWorst(p);
+      h += '<div class="card" style="padding:14px 16px">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<b style="font-size:15px">' + esc((p.icon ? p.icon + ' ' : '') + p.name) + '</b>' +
+          '<span title="' + esc(lampSummaryText(worst)) + '" style="font-size:15px">' + LAMP[worst] + '</span>' +
+          '<span class="badge ' + (worst === 'red' ? 'red' : (worst === 'yellow' ? 'amber' : 'green')) + '" style="font-size:10px">' + esc(lampSummaryText(worst)) + '</span>' +
+          '<span style="flex:1"></span>' +
+          '<button class="icon-btn" title="编辑池（名称/逻辑/证伪线）" data-action="macro.poolEdit" data-pid="' + p.id + '">✎</button>' +
+          '<button class="icon-btn" title="添加指标项" data-action="macro.poolItemAdd" data-pid="' + p.id + '">＋</button>' +
+          '<button class="icon-btn" title="删除池" data-action="macro.poolDel" data-pid="' + p.id + '">✕</button>' +
+        '</div>' +
+        (p.desc ? '<div style="font-size:12px;margin-top:4px;color:var(--ink2)"><b>核心逻辑：</b>' + esc(p.desc) + '</div>' : '') +
+        '<div style="margin-top:10px">';
+      (p.items||[]).forEach(it => {
+        const r = lampOf(it);
+        const pct = r.ind ? windowPct(r.ind.points, 10) : null;
+        const tip = [it.note,
+          it.falsify ? '证伪线：' + it.falsify : '',
+          it.action ? '触发动作：' + it.action : ''].filter(Boolean).join('　|　');
+        h += '<div style="padding:7px 0;border-bottom:1px dashed var(--line,#e5e7eb)">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span style="font-size:15px" title="' + esc(tip) + '">' + LAMP[r.lamp] + '</span>' +
+            '<b style="min-width:110px;font-size:13px">' + esc(it.label) + '</b>' +
+            '<span style="white-space:nowrap"><b style="font-size:14px">' + fmtVal(r.val) + '</b>' +
+              (itemUnit(it, r) ? '<span class="muted" style="font-size:10px"> ' + esc(itemUnit(it, r)) + '</span>' : '') + trendHtml(r) +
+              (r.ind ? streakHtml(r.ind.points) : '') + '</span>' +
+            (r.val == null ? '<span class="badge gray" style="font-size:10px">⏳ ' + (r.missing ? '指标缺失' : '待录入') + '</span>' : '') +
+            (r.ind ? sparkSvg(r.ind.points, 110, 24) : '') +
+            (pct != null ? '<span class="badge gray" style="font-size:10px" title="最新值在近 10 期数据中的相对位置">' + esc(cyclePosText(pct, it.dir)) + '</span>' : '') +
+            (r.date ? '<span class="muted" style="font-size:10px">' + esc(r.date) + '</span>' : '') +
+            '<span style="flex:1"></span>' +
+            '<button class="icon-btn" style="font-size:10px;padding:0 4px" title="' + esc(tip || '编辑') + '" data-action="macro.poolItemEdit" data-pid="' + p.id + '" data-iid="' + it.id + '">✎</button>' +
+          '</div>' +
+          (it.note ? '<div class="muted" style="font-size:11px;padding-left:24px;margin-top:2px">💡 ' + esc(it.note) + '</div>' : '') +
+          (it.action ? '<div style="font-size:11px;padding-left:24px;margin-top:2px">🎯 <b>触发动作：</b>' + esc(it.action) + '</div>' : '') +
+          (it.falsify ? '<div class="muted" style="font-size:11px;padding-left:24px;margin-top:2px">⛔ <b>证伪线：</b>' + esc(it.falsify) + '</div>' : '') +
+          '</div>';
+      });
+      if(!(p.items||[]).length) h += '<div class="muted" style="font-size:12px">暂无指标项，点右上「＋」添加。</div>';
+      if(p.falsify) h += '<div style="font-size:12px;margin-top:10px;padding:8px 12px;background:var(--bg2,#f6f7f9);border-radius:8px">⛔ <b>池级证伪线：</b>' + esc(p.falsify) + '</div>';
+      h += '</div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
   /* ----- 主视图：五层体系渲染 ----- */
   function renderMacro(){
+    maybeAutoSync();
     const gs = groups() || [];
     let h = header('🌐 宏观雷达', '传导链：海外利率/美元 → 全球流动性 → 人民币 → 中国货币 → 信用 → 经济 → 盈利 → A股估值',
       '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn ghost sm" data-action="macro.syncCsv" title="从仓库 data/macro/宏观经济_全部数据.csv 拉取最新数据并增量合并（需通过 http(s) 打开页面）">🔄 同步最新数据</button>' +
       '<button class="btn ghost sm" data-action="macro.exportAll" title="导出全部宏观经济数据为一个 CSV">⬇ 导出全部</button>' +
       '<button class="btn ghost sm" data-action="macro.importAll" title="导入宏观经济数据 CSV（含全部指标）">⬆ 导入全部</button>' +
       '<button class="btn primary" style="background:var(--indigo)" data-action="macro.add">＋ 添加指标</button>' +
       '</div>');
+    if(state.macroSyncHint){
+      h += '<div class="card" style="padding:10px 14px;border-left:4px solid var(--amber,#e67e22)">' +
+        '<b>📥 指标数据还没同步进来</b><span class="muted" style="font-size:12px">——当前通过 file:// 打开，浏览器禁止自动读取数据文件。' +
+        '点右上角「⬆ 导入全部」，选择仓库的 <code>data/macro/宏观经济_全部数据.csv</code>，即可一次填充全部指标' +
+        '（文件选择不受该限制）。用 http(s) 打开时会自动同步，无需手动。</span></div>';
+    }
 
     // ① 每日速览（S级日度 + FedWatch 摘要）
     h += dailyBrief();
+
+    // ①½ L1 宏观温度计（阈值红黄绿灯）+ L2 行业温度计（板块池）
+    h += poolsHtml();
 
     // ② 宏观仪表盘：三温度计 + Regime 四象限 + 流动性×经济 Regime（半自动打分）
     h += thermometersHtml();
@@ -874,6 +1554,36 @@
       '<div class="quick-row"><div class="field" style="flex:1"><label>所属表（CSV）</label><select name="gid">' + (groups()||[]).map(g => '<option value="' + esc(g.id) + '" ' + (g.id === curGid ? 'selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></div>' +
       '<div class="field" style="flex:1"><label>指标 key（英文标识，留空自动生成）</label><input type="text" name="key" value="' + esc(d.key||'') + '" placeholder="如：cpi"></div></div>' +
       '<div class="field"><label>指标说明 / 解读提示</label><textarea name="desc" rows="2" placeholder="这个指标代表什么？怎么解读？（如：10Y↓ 未必利好，先问为什么跌）">' + esc(d.desc||'') + '</textarea></div>';
+  }
+  /* ----- L1/L2 温度计池：编辑弹窗体 ----- */
+  function poolItemModalBody(p, it){
+    const d = it || {};
+    const refVal = d.ref || '';
+    const refOpts = '<option value="fedwatch"' + (refVal === 'fedwatch' ? ' selected' : '') + '>FedWatch 最新会议加息概率</option>' +
+      (groups()||[]).map(g => '<optgroup label="' + esc(g.name) + '">' +
+        (g.indicators||[]).map(i => '<option value="ind:' + esc(i.key) + '"' + (refVal === 'ind:' + i.key ? ' selected' : '') + '>' +
+          esc(i.name) + (i.key ? '（' + esc(i.key) + '）' : '') + '</option>').join('') + '</optgroup>').join('');
+    const dirSel = ['above','below','up','down'];
+    const dirLbl = { above:'阈值：越高越好（≥绿值 绿）', below:'阈值：越低越好（≤绿值 绿）', up:'环比：上行 = 绿（不设阈值）', down:'环比：下行 = 绿（不设阈值）' };
+    return '<input type="hidden" name="pid" value="' + p.id + '">' +
+      '<input type="hidden" name="iid" value="' + (d.id || '') + '">' +
+      '<div class="quick-row"><div class="field" style="flex:1"><label>显示名称 <span style="color:var(--red)">*</span></label><input type="text" name="label" required value="' + esc(d.label||'') + '" placeholder="如：美债 10Y"></div>' +
+      '<div class="field" style="flex:1"><label>数据源</label><select name="ref">' + refOpts + '</select></div></div>' +
+      '<div class="quick-row"><div class="field" style="flex:1"><label>判定方向</label><select name="dir">' +
+        dirSel.map(k => '<option value="' + k + '" ' + ((d.dir||'above') === k ? 'selected' : '') + '>' + dirLbl[k] + '</option>').join('') + '</select></div>' +
+      '<div class="field" style="flex:none;width:130px"><label>绿灯阈值</label><input type="number" step="0.01" name="green" value="' + (d.green != null ? d.green : '') + '"></div>' +
+      '<div class="field" style="flex:none;width:130px"><label>黄灯阈值</label><input type="number" step="0.01" name="yellow" value="' + (d.yellow != null ? d.yellow : '') + '"></div></div>' +
+      '<div class="field"><label>证伪线（什么情况说明逻辑错了）</label><input type="text" name="falsify" value="' + esc(d.falsify||'') + '" placeholder="如：现货价较近 8 周高点回落 >10% → 景气见顶"></div>' +
+      '<div class="field"><label>触发动作（灯亮时做什么）</label><input type="text" name="action" value="' + esc(d.action||'') + '" placeholder="如：>4.5%：降低成长股仓位弹性"></div>' +
+      '<div class="field"><label>备注（口径说明，可空）</label><input type="text" name="note" value="' + esc(d.note||'') + '" placeholder="如：看 5 日累计趋势而非单日"></div>';
+  }
+  function poolModalBody(p){
+    const d = p || {};
+    return '<input type="hidden" name="pid" value="' + (d.id || '') + '">' +
+      '<div class="quick-row"><div class="field" style="flex:1"><label>池名称 <span style="color:var(--red)">*</span></label><input type="text" name="name" required value="' + esc(d.name||'') + '" placeholder="如：半导体设备"></div>' +
+      '<div class="field" style="flex:none;width:90px"><label>图标</label><input type="text" name="icon" value="' + esc(d.icon||'') + '" placeholder="如：🔧"></div></div>' +
+      '<div class="field"><label>一句话逻辑</label><input type="text" name="desc" value="' + esc(d.desc||'') + '" placeholder="这个板块的核心矛盾是什么？"></div>' +
+      '<div class="field"><label>池级证伪线（整个板块逻辑何时作废）</label><input type="text" name="falsify" value="' + esc(d.falsify||'') + '" placeholder="如：DRAM 连跌 4 周 + ROE 下滑 → 景气拐点"></div>';
   }
   function pointModalBody(i){
     const pts = (i.points||[]).slice().sort((a,b) => b.date.localeCompare(a.date));
@@ -1026,62 +1736,12 @@
     });
     return { created, updated, points, tables };
   }
-  // 简单 CSV 行解析（逐行 + 引号内逗号处理 + 跨行合并）
+  // 简单 CSV 行解析 / 导出：统一走 modules/csv-kit.js（本文件原有两份重复实现已并入）
   function parseCsvSimple(text){
-    const rawLines = String(text||'').replace(/\r\n/g,'\n').replace(/^\uFEFF/,'').split('\n');
-    const lines = [];
-    let pending = null;
-    for(const ln of rawLines){
-      if(pending != null) pending += '\n' + ln; else pending = ln;
-      let q=0; for(const ch of pending) if(ch==='"') q++;
-      if(q % 2 === 0){ lines.push(pending); pending = null; }
-    }
-    if(pending != null) lines.push(pending);
-    const out = [];
-    for(const ln of lines){
-      if(!ln.trim()) continue;
-      const f = []; let field='', inQ=false;
-      for(let i=0;i<ln.length;i++){
-        const ch = ln[i];
-        if(inQ){
-          if(ch === '"'){ if(ln[i+1]==='"'){ field+='"'; i++; } else inQ=false; }
-          else field += ch;
-        } else {
-          if(ch === '"') inQ = true;
-          else if(ch === ','){ f.push(field); field=''; }
-          else field += ch;
-        }
-      }
-      f.push(field); out.push(f);
-    }
-    return out;
+    return GT_CSV.parseCsvSimple(text);
   }
-  // 触发浏览器下载 CSV（优先系统「另存为」可选定文件夹，不支持则直接下载）
   function downloadCsv(filename, content){
-    const blob = new Blob([content], { type:'text/csv;charset=utf-8;' });
-    const trySave = async () => {
-      if(window.showSaveFilePicker){
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [{ description:'CSV 数据', accept:{ 'text/csv':['.csv'] } }],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob); await writable.close();
-          return true;
-        } catch(e){
-          if(e && e.name === 'AbortError') return false;
-          console.warn('另存为导出失败，改用下载:', e);
-        }
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click();
-      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
-      return true;
-    };
-    return trySave();
+    return GT_CSV.downloadCsv(filename, content);
   }
 
   /* ----- 组内查找工具 ----- */
@@ -1148,6 +1808,35 @@
     render: renderMacro,
     actions: {
       'macro.add': () => openModal('添加宏观指标', indModalBody(null), 'macro.save'),
+      // ---- L1/L2 温度计池管理 ----
+      'macro.poolAdd': () => openModal('新增行业池', poolModalBody(null), 'macro.savePool'),
+      'macro.poolEdit': el => {
+        const p = findPool(el.dataset.pid); if(!p) return;
+        openModal('编辑行业池 · ' + p.name, poolModalBody(p), 'macro.savePool');
+      },
+      'macro.poolDel': el => {
+        const p = findPool(el.dataset.pid); if(!p) return;
+        if(p.fixed){ toast('⚠️ L1 宏观温度计是固定池，不可删除（可编辑/移除其中的指标项）'); return; }
+        if(!confirm('删除行业池「' + p.name + '」？（不影响宏观指标数据本身）')) return;
+        DB.macro.pools = (DB.macro.pools||[]).filter(x => x.id !== p.id);
+        save(); render();
+      },
+      'macro.poolItemAdd': el => {
+        const p = findPool(el.dataset.pid); if(!p) return;
+        openModal('添加温度计指标 · ' + p.name, poolItemModalBody(p, null), 'macro.savePoolItem');
+      },
+      'macro.poolItemEdit': el => {
+        const p = findPool(el.dataset.pid); if(!p) return;
+        const it = (p.items||[]).find(x => x.id === el.dataset.iid); if(!it) return;
+        openModal('编辑温度计指标 · ' + it.label, poolItemModalBody(p, it), 'macro.savePoolItem');
+      },
+      'macro.poolItemDel': el => {
+        const p = findPool(el.dataset.pid); if(!p) return;
+        const it = (p.items||[]).find(x => x.id === el.dataset.iid); if(!it) return;
+        if(!confirm('从「' + p.name + '」移除「' + it.label + '」？')) return;
+        p.items = p.items.filter(x => x.id !== it.id);
+        save(); render();
+      },
       'macro.fRange': el => { state.macroRange = el.dataset.v; render(); },
       // ---- 三温度计人工修正（±5，范围 -25~+25）----
       'macro.scoreAdj': el => {
@@ -1277,8 +1966,58 @@
         };
         input.click();
       },
+      // ---- 一键同步：直接从仓库 CSV 拉取并增量合并，免去手动选择文件 ----
+      'macro.syncCsv': () => {
+        const url = 'data/macro/宏观经济_全部数据.csv';
+        toast('正在同步仓库最新宏观数据…');
+        fetch(url, { cache: 'no-store' })
+          .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .then(text => {
+            const r = csvToAllGroups(parseCsvSimple(text));
+            save(); render();
+            toast('同步完成：' + (r.tables||0) + ' 张表，新增 ' + r.created + ' 个指标，更新 ' + r.updated +
+              ' 个指标，写入 ' + r.points + ' 条数据');
+          })
+          .catch(e => {
+            alert('同步失败：' + e.message + '\n\n' +
+              '请确认通过 http(s) 方式打开页面（file:// 无法读取数据文件）；\n' +
+              '也可改用「⬆ 导入全部」手动选择 data/macro/宏观经济_全部数据.csv。');
+          });
+      },
     },
     forms: {
+      'macro.savePool': fd => {
+        const pid = fd.get('pid');
+        const data = { name:String(fd.get('name')||'').trim(), icon:String(fd.get('icon')||'').trim(),
+          desc:String(fd.get('desc')||'').trim(), falsify:String(fd.get('falsify')||'').trim() };
+        if(!data.name){ alert('请填写池名称'); return; }
+        if(pid){
+          const p = findPool(pid); if(!p) return;
+          Object.assign(p, data);
+        } else {
+          DB.macro.pools.push(Object.assign({ id:uid(), key:'pool_' + Date.now().toString(36), items:[] }, data));
+        }
+        save(); closeModal(); render();
+      },
+      'macro.savePoolItem': fd => {
+        const p = findPool(fd.get('pid')); if(!p) return;
+        const ref = String(fd.get('ref')||'').trim();
+        const label = String(fd.get('label')||'').trim();
+        if(!label || !ref){ alert('请填写显示名称与数据源'); return; }
+        const num = k => { const v = parseFloat(fd.get(k)); return isNaN(v) ? null : v; };
+        const data = { label, ref, unit:'', dir:String(fd.get('dir')||'above'),
+          green:num('green'), yellow:num('yellow'),
+          falsify:String(fd.get('falsify')||'').trim(), action:String(fd.get('action')||'').trim(),
+          note:String(fd.get('note')||'').trim() };
+        const iid = fd.get('iid');
+        if(iid){
+          const it = (p.items||[]).find(x => x.id === iid); if(!it) return;
+          Object.assign(it, data);
+        } else {
+          (p.items = p.items||[]).push(Object.assign({ id:uid() }, data));
+        }
+        save(); closeModal(); render();
+      },
       'macro.save': fd => {
         const id = fd.get('id');
         const gid = fd.get('gid');

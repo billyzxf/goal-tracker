@@ -10,9 +10,25 @@
   ② 一致预期（按年份：EPS / PE / ROE / 营收 / 归母净利 / 同比）
 
 用法：
+  # 自动模式（推荐）：读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）；
+  # 文件不存在时回退 data/goal-tracker-data.json；加 --update-json 同时把结果写入 JSON
+  py fetch_profit_forecast.py --auto
+  py fetch_profit_forecast.py --auto --update-json
+
+  # 从公司列表 CSV 批量抓取。兼容三种来源格式（列：股票代码[,公司名称]）：
+  #   估值模块「⬇ 导出公司列表」/ 财报跟踪「⬇ 导出 CSV」/ 公司组「📤 导出该组」
+  # 适合只分析某个公司组的场景（如公司组_AI算力_2026-09-03.csv）
+  py fetch_profit_forecast.py --from-csv 公司组_AI算力_2026-09-03.csv
+
+  # 抓取单只 / 多只（逗号分隔）
   py fetch_profit_forecast.py --ticker 002463.SZ
   py fetch_profit_forecast.py --tickers 002463.SZ,601138.SH
-  py fetch_profit_forecast.py --outdir ../data
+
+  # 从 JSON 读全部公司 + 把结果写回 JSON
+  py fetch_profit_forecast.py --json ../data/goal-tracker-data.json --update-json
+
+  # 指定输出目录（默认 data/forecast/）；--no-csv 只写 JSON 不生成 CSV
+  py fetch_profit_forecast.py --ticker 002463.SZ --outdir ../data
 """
 import argparse
 import csv
@@ -169,7 +185,7 @@ def to_forecast_json(d):
 
 
 def load_companies_from_json(json_path):
-    """从 goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, name)]。"""
+    """从 data/goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, name)]。"""
     import json
     with open(json_path, encoding='utf-8') as f:
         d = json.load(f)
@@ -242,12 +258,12 @@ def main():
     ap = argparse.ArgumentParser(description='东财F10盈利预测（券商明细+一致预期）→ CSV / 写入 JSON')
     ap.add_argument('--ticker', help='单只股票代码，如 002463.SZ')
     ap.add_argument('--tickers', help='多只，逗号分隔')
-    ap.add_argument('--json', dest='json_src', default=None, help='从 goal-tracker-data.json 读取全部公司')
+    ap.add_argument('--json', dest='json_src', default=None, help='从 data/goal-tracker-data.json 读取全部公司')
     ap.add_argument('--auto', action='store_true',
-                    help='读取 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成）获取公司列表；文件不存在时回退 JSON')
+                    help='读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）获取公司列表；文件不存在时回退 JSON')
     ap.add_argument('--from-csv', dest='from_csv', default=None,
                     help='从公司列表 CSV 读取目标公司（列：股票代码[,公司名称]，兼容估值模块导出/财报跟踪导出格式）')
-    ap.add_argument('--update-json', action='store_true', help='抓取后把盈利预测写入 goal-tracker-data.json')
+    ap.add_argument('--update-json', action='store_true', help='抓取后把盈利预测写入 data/goal-tracker-data.json')
     ap.add_argument('--no-csv', action='store_true', help='不生成 CSV 文件')
     ap.add_argument('--outdir', default=None, help='输出目录（默认 data/forecast/）')
     args = ap.parse_args()
@@ -262,14 +278,14 @@ def main():
     tlist = []
     json_path = None
     if args.auto:
-        # auto 模式：默认读 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
-        # 文件不存在时回退 goal-tracker-data.json
-        summary_csv = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', '公司列表_当前汇总.csv'))
+        # auto 模式：默认读 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
+        # 文件不存在时回退 data/goal-tracker-data.json
+        summary_csv = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', '公司列表.csv'))
         if os.path.exists(summary_csv):
             tlist = load_targets_from_csv(summary_csv)
-            print('📋 公司列表：data/公司列表_当前汇总.csv（%d 家）' % len(tlist))
+            print('📋 公司列表：data/公司列表.csv（%d 家）' % len(tlist))
         else:
-            print('⚠️  未找到 data/公司列表_当前汇总.csv，回退到 goal-tracker-data.json')
+            print('⚠️  未找到 data/公司列表.csv，回退到 data/goal-tracker-data.json')
             json_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'goal-tracker-data.json'))
             tlist = load_companies_from_json(json_path)
     elif args.json_src:
@@ -277,6 +293,9 @@ def main():
         tlist = load_companies_from_json(json_path)
     elif args.from_csv:
         tlist = load_targets_from_csv(args.from_csv)
+        if not tlist:
+            print('公司列表 CSV 中未找到任何公司（需要「股票代码」列）。')
+            return 1
     else:
         tickers = args.ticker or args.tickers
         if not tickers:

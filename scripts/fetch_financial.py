@@ -6,6 +6,7 @@
   ① RPT_F10_FINANCE_MAINFINADATA  核心财务指标（ROE/毛利率/净利率/负债率/总资产/营收/现金流/扣非等，
                                     含营收同比% TOTALOPERATEREVETZ、扣非净利润同比% KCFJCXSYJLRTZ）
   ② RPT_F10_FINANCE_GINCOME       利润表（营收 / 营业成本 → 毛利润 / 归母净利润）
+  ③ RPT_F10_FINANCE_GBALANCE      资产负债表（应收账款 / 存货 / 合同负债 / 货币资金）
 
 输出文件（data/ 目录）：
   {ticker}_{公司名}.csv   —— 与估值模块「⬇ 导出 / ⬆ 导入」CSV 完全兼容
@@ -15,7 +16,7 @@
   py fetch_financial.py --ticker 688256.SH
   # 抓取多只（逗号分隔）
   py fetch_financial.py --tickers 601138.SH,000977.SZ,300308.SZ
-  # 自动读取 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成）批量抓取；
+  # 自动读取 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成）批量抓取；
   # 文件不存在时回退：JSON → 扫描已有 CSV
   py fetch_financial.py --auto --quarters 18
   # 从公司列表 CSV 批量抓取（估值模块「⬇ 导出公司列表」或财报跟踪「⬇ 导出 CSV」均可）
@@ -28,6 +29,11 @@
   - 东财接口返回的是「报告期累计值」（一季报=Q1累计，半年报=Q1+Q2，年报=全年），
     与 GoalTracker 现有财务数据的口径一致，直接落盘即可。
   - 单个字段抓取失败时该格留空（不影响其他指标）。
+  - 增量档案：写盘前自动读入同代码已有 CSV（公司改名也能按 6 位代码找到），
+    与本次抓取合并后写回 —— 历史报告期整期保留、新值只覆盖非空字段，
+    因此可以长期用小 --quarters 只拉最近几期，老数据不会丢。
+  - 列清单含销售收现 salesCash（现金流量表「销售商品、提供劳务收到的现金」），
+    与前端 valuation.js METRICS / 共享财务库 finstats.js 的 METRIC_KEYS 对齐。
 """
 import argparse
 import csv
@@ -50,8 +56,10 @@ from eastmoney import EastmoneyClient, to_yi, _norm_report_date
 # 营收同比(%) 紧跟在营业收入(亿)后，扣非净利润同比(%) 紧跟在扣非净利润(亿)后。
 OUT_COLUMNS = [
     'totalAssets', 'equity', 'revenue', 'revenueYoy', 'grossProfit', 'netProfit',
-    'deductedNetProfit', 'deductedNetProfitYoy', 'opCashFlow', 'capex', 'roe',
-    'grossMargin', 'netMargin', 'assetLiabRatio', 'totalAssetTurnover',
+    'deductedNetProfit', 'deductedNetProfitYoy', 'opCashFlow', 'salesCash', 'capex', 'roe',
+    'grossMargin', 'netMargin', 'assetLiabRatio',
+    'accountsReceivable', 'inventory', 'contractLiab', 'cash',
+    'totalAssetTurnover',
 ]
 
 # 东财字段 → (目标列, 东财字段名, 是否"元→亿"换算)。
@@ -72,6 +80,20 @@ MAIN_MAP = [
     ('netMargin',            'XSJLL',              False),  # 净利率(%)
     ('assetLiabRatio',       'ZCFZL',              False),  # 资产负债率(%)
     ('totalAssetTurnover',   'ZZCJLL',             False),  # 总资产周转率(次)
+]
+
+# 资产负债表字段（RPT_F10_FINANCE_GBALANCE）→ 目标列（单位均为"元"，用 to_yi 换算为"亿"）
+BALANCE_MAP = [
+    ('accountsReceivable', 'ACCOUNTS_RECE'),    # 应收账款(元)
+    ('inventory',          'INVENTORY'),        # 存货(元)
+    ('contractLiab',       'CONTRACT_LIAB'),    # 合同负债(元)
+    ('cash',               'MONETARYFUNDS'),    # 货币资金(元)
+]
+
+# 现金流量表字段（RPT_F10_FINANCE_GCASHFLOW，复用已抓取的 finance_cashflow 响应，零额外请求）
+CASHFLOW_MAP = [
+    ('salesCash', 'SALES_SERVICES'),          # 销售商品、提供劳务收到的现金(元)，观察收现质量
+    ('capex',     'CONSTRUCT_LONG_ASSET'),    # 购建固定资产...支付的现金(元) ≈资本开支
 ]
 
 
@@ -140,7 +162,7 @@ def load_targets_from_csv(path):
 
 
 def scan_from_json(json_path):
-    """从 goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, 公司名), ...]。
+    """从 data/goal-tracker-data.json 读取全部 A 股公司，返回 [(ticker, 公司名), ...]。
     优先用于 --auto：能覆盖 JSON 里所有公司（而不只是已有 CSV 的公司）。"""
     if not os.path.exists(json_path):
         return []
@@ -160,17 +182,35 @@ def scan_from_json(json_path):
         return []
 
 
-def fetch_one(em, ticker, name, quarters=8):
+def fetch_one(em, ticker, name, quarters=8, archive=None, skip_unchanged=False):
     """抓取单公司财务数据。
-    返回 (真实公司名, {quarter: {col: value}})，数据按报告期排序截取最近 N 期。"""
+    返回 (真实公司名, {quarter: {col: value}})，数据按报告期排序截取最近 N 期。
+    archive 传入已有档案（{quarter: {col: value}}）时，--skip-unchanged 可在
+    MAIN 报告期无新增且档案核心字段齐全的情况下，跳过利润表/资产负债表/现金流量表 3 次请求。"""
     secu = ticker.upper()
     if '.' not in secu:
         secu = secu + '.SH' if secu[0] in '689' else secu + '.SZ'
 
     # 按需拉取：只请求需要的报告期数，减少网络开销（东财单次最多约 39 期）
     main = em.finance_main(secu, periods=quarters)
-    income = em.finance_income(secu, periods=quarters)
-    cashflow = em.finance_cashflow(secu, periods=quarters)
+
+    # 增量加速判断：MAIN（核心指标，兼做新报告期「发现」查询）最新期与档案一致，
+    # 且档案该期已有营收+净利润 → 其余 3 类报表不会带来新东西，全部跳过（省约 75% 请求量）
+    skip_rest = False
+    if skip_unchanged and archive:
+        newest_main = None
+        for r in main or []:
+            q = _norm_report_date(r.get('REPORT_DATE'))
+            if q and (newest_main is None or _qkey(q) > _qkey(newest_main)):
+                newest_main = q
+        newest_arch = latest_period(archive)
+        if newest_main and newest_arch and _qkey(newest_main) == _qkey(newest_arch) \
+                and archive_has_latest_core(archive):
+            skip_rest = True
+
+    income = [] if skip_rest else em.finance_income(secu, periods=quarters)
+    balance = [] if skip_rest else em.finance_balance(secu, periods=quarters)
+    cashflow = [] if skip_rest else em.finance_cashflow(secu, periods=quarters)
 
     # 优先用东财返回的公司简称（--ticker 方式未传公司名时也能用真名）
     real_name = name
@@ -218,16 +258,29 @@ def fetch_one(em, ticker, name, quarters=8):
         if np_ is not None:
             rows[q]['netProfit'] = np_
 
-    # 现金流量表：资本开支（购建固定资产、无形资产和其他长期资产支付的现金，元→亿）
+    # 现金流量表：销售收现 / 资本开支（元→亿，同一次响应顺带解析）
     cf_by_q = {}
     for r in cashflow:
         cf_by_q[_norm_report_date(r.get('REPORT_DATE'))] = r
     for q, r in cf_by_q.items():
         if q not in rows:
             continue
-        capex = to_yi(r.get('CONSTRUCT_LONG_ASSET'))
-        if capex is not None:
-            rows[q]['capex'] = round(capex, 4)
+        for col, emfield in CASHFLOW_MAP:
+            val = to_yi(r.get(emfield))
+            if val is not None:
+                rows[q][col] = round(val, 4)
+
+    # 资产负债表：应收账款/存货/合同负债/货币资金（元→亿）
+    bal_by_q = {}
+    for r in balance:
+        bal_by_q[_norm_report_date(r.get('REPORT_DATE'))] = r
+    for q, r in bal_by_q.items():
+        if q not in rows:
+            continue
+        for col, emfield in BALANCE_MAP:
+            val = to_yi(r.get(emfield))
+            if val is not None:
+                rows[q][col] = round(val, 4)
 
     # 排序并截取最近 N 期
     sorted_q = sorted(rows.keys(), key=lambda x: _qkey(x), reverse=True)[:quarters]
@@ -241,8 +294,86 @@ def _qkey(q):
     return 0
 
 
+# ================= 增量档案（历史报告期只增不删，避免财报季全量重拉） =================
+def find_archive(outdir, ticker):
+    """按 6 位代码前缀查找已有档案（公司改名后文件名不同也能找到），返回路径或 None。"""
+    for f in glob.glob(os.path.join(outdir, '*.csv')):
+        base = os.path.basename(f)
+        m = re.match(r'^([0-9]{6}\.(SH|SZ|BJ))_.+\.csv$', base)
+        if m and m.group(1) == ticker.upper():
+            return f
+    return None
+
+
+def load_archive(path):
+    """读取已有 CSV 档案 → {quarter: {col: value}}。
+    兼容 19/20 列旧档与任意列序（按表头列名读取）；文件不存在/解析失败返回 {}。"""
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            lines = [ln for ln in f if not ln.lstrip().startswith('#')]
+        archive, header = {}, None
+        for r in csv.reader(lines):
+            if not r or not r[0].strip():
+                continue
+            key = r[0].strip()
+            if key in ('公司', '股票代码'):
+                continue
+            if key == '季度':
+                header = [c.strip() for c in r[1:]]
+                continue
+            if header and re.match(r'^\d{4}Q[1-4]$', key):
+                row = {}
+                for i, col in enumerate(header):
+                    if col == '季度':
+                        continue
+                    v = (r[i + 1].strip() if i + 1 < len(r) else '')
+                    nv = as_num(v)
+                    if nv is not None:
+                        row[col] = nv
+                archive[key] = row
+        return archive
+    except Exception as e:   # noqa: BLE001
+        print('⚠️  读取旧档失败 %s：%s（按无旧档处理）' % (os.path.basename(path), e))
+        return {}
+
+
+def merge_archive(archive, data):
+    """新数据合并进旧档案：新值覆盖非空字段、空位保留旧值、旧报告期整期保留。"""
+    merged = {q: dict(row) for q, row in archive.items()}
+    for q, row in data.items():
+        if q not in merged:
+            merged[q] = dict(row)
+            continue
+        for col, v in row.items():
+            if v is not None:
+                merged[q][col] = v
+    return merged
+
+
+def latest_period(archive):
+    """档案中最新的报告期（'2026Q2'），无数据返回 None。"""
+    qs = [q for q in archive.keys() if _qkey(q)]
+    return max(qs, key=_qkey) if qs else None
+
+
+def archive_has_latest_core(archive):
+    """档案最新期是否已含核心字段（营收+净利润）：--skip-unchanged 判断用。"""
+    lp = latest_period(archive)
+    if not lp:
+        return False
+    row = archive[lp]
+    return row.get('revenue') is not None and row.get('netProfit') is not None
+
+
 def write_csv(ticker, name, data, outdir, outname=None):
-    """把 {quarter: {col: value}} 写成估值模块兼容的 CSV。"""
+    """增量合并写：读入同代码已有档案（公司改名也能按 6 位代码找到），与本次抓取
+    合并后整档写回。历史报告期永不丢失（超出 --quarters 的旧期保留），
+    新值只覆盖非空字段。"""
+    archive_path = find_archive(outdir, ticker)
+    archive = load_archive(archive_path)
+    merged = merge_archive(archive, data)
     if outname is None:
         outname = '%s_%s.csv' % (ticker, name)
     path = os.path.join(outdir, outname)
@@ -253,13 +384,20 @@ def write_csv(ticker, name, data, outdir, outname=None):
     buf.write('公司,%s\n' % name)
     buf.write('股票代码,%s\n' % ticker)
     buf.write('季度,' + ','.join(OUT_COLUMNS) + '\n')
-    for q in sorted(data.keys(), key=_qkey):
-        row = data[q]
+    for q in sorted(merged.keys(), key=_qkey):
+        row = merged[q]
         line = [q] + ['' if row.get(c) is None else _fmt(row.get(c)) for c in OUT_COLUMNS]
         w.writerow(line)
     content = buf.getvalue()
     with open(path, 'w', encoding='utf-8', newline='') as f:
         f.write(content)
+    # 公司改名后旧档换名：数据已并入新档，删除旧文件避免重复
+    if archive_path and os.path.abspath(archive_path) != os.path.abspath(path):
+        try:
+            os.remove(archive_path)
+            print('   ♻️  旧档 %s 已并入 %s' % (os.path.basename(archive_path), outname))
+        except OSError:
+            pass
     return path
 
 
@@ -278,6 +416,9 @@ def main():
     ap.add_argument('--from-csv', dest='from_csv', default=None,
                     help='从公司列表 CSV 读取目标公司（列：股票代码[,公司名称]，兼容估值模块导出/财报跟踪导出格式）')
     ap.add_argument('--quarters', type=int, default=9, help='抓取最近 N 期（默认 9）')
+    ap.add_argument('--skip-unchanged', dest='skip_unchanged', action='store_true',
+                    help='增量加速：MAIN 报告期无新增且档案最新期已有营收+净利润时，'
+                         '跳过利润表/资产负债表/现金流量表 3 次请求（财报季日常巡检可省约 75%% 请求量）')
     ap.add_argument('--outdir', default=None, help='输出目录（默认 <scripts>/../data，即本地数据目录）')
     ap.add_argument('--json', default=None, help='公司列表来源 JSON（默认 data/goal-tracker-data.json）')
     args = ap.parse_args()
@@ -293,20 +434,20 @@ def main():
     # 确定目标公司列表
     targets = []
     if args.auto:
-        # auto 模式：默认读 data/公司列表_当前汇总.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
+        # auto 模式：默认读 data/公司列表.csv（估值模块「⬇ 导出公司列表」生成的完整列表）；
         # 文件不存在时回退：JSON → 扫描已有 CSV
-        summary_csv = os.path.join(base_data, '公司列表_当前汇总.csv')
+        summary_csv = os.path.join(base_data, '公司列表.csv')
         if os.path.exists(summary_csv):
             targets = load_targets_from_csv(summary_csv)
-            print('📋 公司列表：data/公司列表_当前汇总.csv（%d 家）' % len(targets))
+            print('📋 公司列表：data/公司列表.csv（%d 家）' % len(targets))
         else:
-            print('⚠️  未找到 data/公司列表_当前汇总.csv，回退到 JSON / 已有 CSV 扫描')
+            print('⚠️  未找到 data/公司列表.csv，回退到 JSON / 已有 CSV 扫描')
             json_path = args.json or os.path.join(base_data, 'goal-tracker-data.json')
             targets = scan_from_json(json_path)
             if not targets:
                 targets = scan_existing(outdir)
         if not targets:
-            print('未找到公司列表，请先在估值模块「⬇ 导出公司列表」并另存为 data/公司列表_当前汇总.csv，或用 --ticker/--tickers/--json 指定。')
+            print('未找到公司列表，请先在估值模块「⬇ 导出公司列表」生成 data/公司列表.csv，或用 --ticker/--tickers/--json 指定。')
             return 1
     elif args.from_csv:
         targets = load_targets_from_csv(args.from_csv)
@@ -326,13 +467,18 @@ def main():
     ok = fail = 0
     for ticker, name in targets:
         try:
-            real_name, data = fetch_one(em, ticker, name, args.quarters)
+            # 读已有档案：供 --skip-unchanged 增量判断；写盘时并入历史期（只增不删）
+            archive_path = find_archive(outdir, ticker)
+            archive = load_archive(archive_path)
+            real_name, data = fetch_one(em, ticker, name, args.quarters,
+                                        archive=archive, skip_unchanged=args.skip_unchanged)
             if not data:
                 print('⚠️  跳过 %s：无财务数据返回' % ticker)
                 fail += 1
                 continue
             path = write_csv(ticker, real_name, data, outdir)
-            print('✅ %s  %s → 写入 %s 期数据 → %s' % (ticker, real_name, len(data), path))
+            print('✅ %s  %s → 新增/更新 %s 期，档案共 %s 期 → %s' % (
+                ticker, real_name, len(data), len(merge_archive(archive, data)), path))
             ok += 1
         except Exception as e:   # noqa: BLE001
             print('❌ %s 抓取失败：%s' % (ticker, e))

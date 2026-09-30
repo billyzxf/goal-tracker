@@ -31,8 +31,13 @@ r"""
      schtasks /create /tn "GoalTracker宏观" /tr "py d:\WPSSyncdisk\goal-tracker\scripts\fetch_macro_all.py" /sc weekly /d MON,TUE,WED,THU,FRI /st 15:30
 
 无稳定自动源、需每月手动录入的指标（脚本结束时也会打印）：
-  社融存量同比/核心CPI/PMI新订单/工业增加值/社零/固投/工业企业利润/地产销售/DR007/ETF资金流
+  社融存量同比/核心CPI/PMI新订单/工业企业利润/地产销售/ETF资金流
   （国家统计局/央行发布，月度频率，手动录入成本很低）
+已自动化的原手动指标：工业增加值(akshare gyzjz)、社零(akshare retail)、
+  固投(akshare gdzctz)、出口同比(东财 CUSTOMS / akshare hgjck)、DR007(repo_rate_hist FDR007)
+行业跟踪指标已自动化：VLCC运价(上海航交所CT1/BDTI兜底)、电源设备PE(申万二级快照)、
+  游戏版号(NPPA官网)、云厂CapEx同比(stockanalysis.com)、存储ROE/军工合同负债(本地财务档案)；
+  仍手动：R32制冷剂(生意社反爬)、铜精矿TC(SMM付费)、PCB能见度(纯调研)
 
 依赖：requests、akshare、pandas（akshare 缺失时仅跳过 ak 源，其余源照常工作）
 """
@@ -100,6 +105,14 @@ INDICATORS = [
       '油价↑→通胀↑→美联储宽松空间↓→美债利率↑→估值承压。',
       [dict(type='yahoo', symbol='BZ=F'),
        dict(type='stooq', symbols=['cb.f', 'cl.f'])]),
+    I('wti', 'WTI 原油', '美元', '日度', '海外与利率',
+      '美油基准，比布伦特对美国通胀/库存更敏感：>100 = 通胀压力红灯（L1 宏观温度计项）。',
+      [dict(type='yahoo', symbol='CL=F'),
+       dict(type='stooq', symbols=['cl.f'])]),
+    I('vix', 'VIX 恐慌指数', '', '日度', '海外与利率',
+      '标普期权隐含波动率：>28 全球 risk-off，>35 后快速回落常是阶段底（L1 宏观温度计项）。',
+      [dict(type='yahoo', symbol='^VIX'),
+       dict(type='stooq', symbols=['^vix'])]),
     I('gold', '黄金', '美元', '日度', '海外与利率',
       '实际利率/美元/避险/央行购金的综合温度计，与实际利率负相关最稳定。',
       [dict(type='yahoo', symbol='GC=F'),
@@ -164,6 +177,15 @@ INDICATORS = [
             val_col='货币和准货币(M2)-同比增长', date_kind='month'),
        dict(type='em_dc', report='RPT_ECONOMY_MONEY_SUPPLY',
             field_candidates=['M2_SAME', 'M2_YOY'], date_field='TIME')]),
+    I('newcredit', '新增人民币贷款同比', '%', '月度', '货币与金融',
+      '信用扩张的流量观测：新增贷款同比回升=实体融资需求改善（存量看社融，目前需手动录入）。',
+      [dict(type='ak', fn='macro_china_new_financial_credit', date_col='月份',
+            val_col='当月-同比增长', date_kind='month')]),
+    I('dr007', '银行间 7 天回购利率', '%', '日度', '货币与金融',
+      '银行间资金面松紧最直接的观测：持续低位=资金宽松、风险偏好改善；快速上行=资金收紧、杠杆承压。'
+      '数据取 FR007 回购定盘利率（与 DR007 高度同步，作为公开可得替代）。',
+      [dict(type='ak', fn='repo_rate_query', date_col='date', val_col='FR007', date_kind='day'),
+       dict(type='ak', fn='macro_china_shibor_all', date_col='日期', val_col='1W-定价', date_kind='day')]),
 
     # ============ 中国经济周期 / 价格（表：国内宏观经济） ============
     I('gdp', 'GDP 同比增速', '%', '季度', '国内经济',
@@ -172,12 +194,43 @@ INDICATORS = [
     I('pmi', '制造业 PMI', '', '月度', '国内经济',
       '荣枯线50，比GDP快的领先指标。重点拆新订单（需求）而非只看headline。',
       [dict(type='eastmoney', report='RPT_ECONOMY_PMI', field='MAKE_INDEX', date='month')]),
+    I('indval', '工业增加值同比', '%', '月度', '国内经济',
+      'A股=制造业+科技高权重市场，工业周期直接影响盈利。',
+      [dict(type='ak', fn='macro_china_gyzjz', date_col='月份', val_col='同比增长', date_kind='month')]),
+    I('retail', '社会消费品零售同比', '%', '月度', '国内经济',
+      '内需消费动能：社零同比回升=居民消费意愿改善。',
+      [dict(type='ak', fn='macro_china_consumer_goods_retail', date_col='月份', val_col='同比增长',
+            date_kind='month')]),
+    I('fixedasset', '固定资产投资同比', '%', '月度', '国内经济',
+      '基建/制造业/地产三条线合计，财政发力与产业周期的综合映射。',
+      [dict(type='ak', fn='macro_china_gdzctz', date_col='月份', val_col='同比增长', date_kind='month')]),
+    I('exports', '出口同比', '%', '月度', '国内经济',
+      '外需是中国宏观周期重要支撑。重点看"超预期/低于预期"而非绝对值。',
+      [dict(type='em_dc', report='RPT_ECONOMY_CUSTOMS', field_candidates=['EXIT_BASE_SAME'],
+            date_field='REPORT_DATE', date_kind='month', periods=200),
+       dict(type='ak', fn='macro_china_hgjck', date_col='月份', val_col='当月出口额-同比增长',
+            date_kind='month')]),
+    I('elec', '全社会用电量同比', '%', '月度', '国内经济',
+      '经济晴雨表：用电量比 GDP 更实时地反映工业生产与经济活动强度。',
+      [dict(type='ak', fn='macro_china_society_electricity', date_col='统计时间',
+            val_col='全社会用电量同比', date_kind='month')]),
+    I('czsr', '财政收入同比', '%', '月度', '国内经济',
+      '财政发力程度：收入改善配合支出扩张，对基建与总需求形成支撑。',
+      [dict(type='ak', fn='macro_china_czsr', date_col='月份', val_col='当月-同比增长', date_kind='month')]),
+    I('boom', '企业景气指数', '', '季度', '国内经济',
+      '央行调查的企业景气度（>100 为景气区间）：环比改善=企业预期回暖。',
+      [dict(type='ak', fn='macro_china_enterprise_boom_index', date_col='季度',
+            val_col='企业景气指数-指数', date_kind='quarter')]),
     I('cpi', 'CPI 同比', '%', '月度', '物价通胀',
       '居民物价。核心CPI（剔除食品能源）更值得长期跟踪。',
       [dict(type='eastmoney', report='RPT_ECONOMY_CPI', field='NATIONAL_SAME', date='month')]),
     I('ppi', 'PPI 同比', '%', '月度', '物价通胀',
       '工业品价格=企业利润先行指标。PPI↑利好周期资源，PPI持续为负警惕通缩。',
       [dict(type='eastmoney', report='RPT_ECONOMY_PPI', field='BASE_SAME', date='month')]),
+    I('commprice', '大宗商品价格指数', '', '日度', '物价通胀',
+      'PPI 的领先观测：大宗商品价格上行→工业企业成本与通胀预期变化；日度更新更及时。',
+      [dict(type='ak', fn='macro_china_commodity_price_index', date_col='日期',
+            val_col='最新值', date_kind='day')]),
 
     # ============ 市场自身（表：国内宏观经济，分类"市场"） ============
     I('turnover', 'A股成交额', '万亿', '日度', '市场',
@@ -203,12 +256,58 @@ INDICATORS = [
       '全市场估值中枢，必须结合历史分位数看。',
       [dict(type='ak', fn='stock_a_ttm_lyr', date_col='日期', date_candidates=['日期', 'date'],
             val_candidates=['市盈率TTM', 'middlePETTM', 'TTM市盈率', '市盈率'], date_kind='day')]),
+
+    # ============ 第六层 · 行业高频（L2 行业温度计数据源） ============
+    I('dram_ddr4', 'DRAM 现货价 · DDR4 8Gb', '美元', '日度', '行业跟踪',
+      '存储周期高频代理（dramx.com 现货盘平均，取原厂正品口径）。站点改版时转手动录入。',
+      [dict(type='dramx', match='DDR4 8Gb')]),
+    I('dram_ddr5', 'DRAM 现货价 · DDR5 16Gb', '美元', '日度', '行业跟踪',
+      'DDR5 主力合约现货价（dramx.com 现货盘平均），对模组/接口芯片业绩弹性更直接。',
+      [dict(type='dramx', match='DDR5 16Gb')]),
+    I('vlcc_tce', 'VLCC 运价 · CT1', '点', '日度', '行业跟踪',
+      '油运运价代理：上海航交所 CTFI 分航线指数 CT1（中东-中国 VLCC 主航线）。'
+      '上行=油运运价景气，利好中远海能/招商轮船等。CT1 失败时以 BDTI 原油运输指数兜底。',
+      [dict(type='sse_ctfi'),
+       dict(type='ak', fn='macro_china_freight_index', date_col='日期', date_candidates=['日期', 'date'],
+            val_candidates=['原油运输指数BDTI', '原油运输指数(BDTI)', 'BDTI'], date_kind='day')]),
+    I('pe_power', '电源设备 PE（申万）', '倍', '日度', '行业跟踪',
+      '申万二级「其他电源设备Ⅱ」TTM 市盈率快照（光储/锂电/核电设备估值中枢）。'
+      '仅当日快照、无历史序列，前端历史由每日增量逐步积累；务必结合历史分位看。',
+      [dict(type='sw_industry', match='其他电源设备', val='TTM(滚动)市盈率')]),
+    I('game_lic', '游戏版号发放数量', '款', '月度', '行业跟踪',
+      '国产网络游戏每月审批数量（NPPA 官网公告自动解析，详情页最大序号=发放数量）。'
+      '供给端政策信号：连续放量=内容监管转暖。',
+      [dict(type='nppa', months=6)]),
+    I('capex_big4', '北美云厂 CapEx 同比', '%', '季度', '行业跟踪',
+      '微软/谷歌/亚马逊/Meta 季度资本开支合计同比（stockanalysis.com 财报页自动汇总）。'
+      'AI 算力需求最硬的观测：加速上行=算力链（光模块/PCB/电源）景气延续。',
+      [dict(type='sa_capex')]),
+    I('roe_storage', '存储代理 ROE（香农芯创）', '%', '季度', '行业跟踪',
+      '香农芯创（300475，存储分销龙头）单季 ROE，取自本地财务档案。'
+      '存储涨价向利润传导的确认指标：ROE 抬升=涨价落地。',
+      [dict(type='local_fin', file='300475.SZ_香农芯创.csv', col='roe')]),
+    I('mil_contr', '军工合同负债同比（中国船舶）', '%', '季度', '行业跟踪',
+      '中国船舶（600150）合同负债同比，取自本地财务档案。'
+      '军工订单景气前瞻指标：合同负债放量=下游预付款增加、订单回暖。',
+      [dict(type='local_fin', file='600150.SH_中国船舶.csv', col='contractLiab', yoy=True)]),
+    I('jh_gpm', '氟化工毛利率（巨化）', '%', '季度', '行业跟踪',
+      '巨化股份（600160）单季毛利率，取自本地财务档案。'
+      'R32 价格的利润传导确认指标：涨价落地→毛利率抬升（R32 价格无免费源时的替代观测）。',
+      [dict(type='local_fin', file='600160.SH_巨化股份.csv', col='grossMargin')]),
+    I('cu_smelt_gpm', '铜冶炼毛利率（江铜）', '%', '季度', '行业跟踪',
+      '江西铜业（600362）单季毛利率，取自本地财务档案。'
+      '铜精矿 TC 的侧面观测：TC 暴跌→冶炼利润受压→毛利率下滑（TC 无免费源时的替代观测）。',
+      [dict(type='local_fin', file='600362.SH_江西铜业.csv', col='grossMargin')]),
+    I('pcb_rev', 'PCB 营收同比（沪电）', '%', '季度', '行业跟踪',
+      '沪电股份（002463）单季营收同比，取自本地财务档案。'
+      'AI 服务器板需求最直接的财报确认（订单能见度为调研口径时的替代观测）。',
+      [dict(type='local_fin', file='002463.SZ_沪电股份.csv', col='revenueYoy')]),
 ]
 
 # 无稳定自动源、需手动录入的 seed 指标（结束时打印提醒）
-MANUAL_KEYS = ['tsf', 'corecpi', 'pmi_new', 'indval', 'indprofit', 'fixedasset',
-               'retail', 'exports', 'prop_sale', 'unemp', 'dr007', 'etfflow',
-               'corploan', 'hhloan', 'govbond', 'cpi_mom']
+MANUAL_KEYS = ['tsf', 'pmi_new', 'unemp', 'cpi_mom',
+               # 行业高频（L2 行业温度计）：生意社/SMM 等反爬或纯调研口径，保持手动
+               'r32', 'tc_rc', 'pcb_vis']
 
 # 遗留指标（旧 CSV 有历史数据，保留导出）
 LEGACY_KEYS = {'gdp_first', 'gdp_second', 'gdp_third', 'nmpmi', 'cpi_mom',
@@ -250,14 +349,15 @@ def _http_get(url, params=None, headers=None, timeout=20, retries=3):
 
 
 def _tmpl(v):
-    """参数日期模板：{T} → 今天，{T-n} → n 天前（YYYYMMDD / YYYY-MM-DD 视目标而定，
-    统一给 YYYY-MM-DD，akshare 兼容两者）。"""
+    """参数日期模板：{T} → 今天，{T-n} → n 天前；加 C 后缀得紧凑格式 YYYYMMDD。
+    默认 YYYY-MM-DD（多数源兼容），需要 YYYYMMDD 的接口（如 repo_rate_hist）用 {T-nC}。"""
     s = str(v)
     today = datetime.now()
 
     def rep(m):
-        return (today - timedelta(days=int(m.group(1) or 0))).strftime('%Y-%m-%d')
-    return re.sub(r'\{T(?:-(\d+))?\}', rep, s)
+        d = today - timedelta(days=int(m.group(1) or 0))
+        return d.strftime('%Y%m%d') if m.group(2) else d.strftime('%Y-%m-%d')
+    return re.sub(r'\{T(?:-(\d+))?(C)?\}', rep, s)
 
 
 def fetch_eastmoney(cfg, periods=150):
@@ -484,6 +584,221 @@ def fetch_chinamoney(step):
     return sorted(pts.items())
 
 
+DRAMX_URL = 'https://www.dramx.com/Price/DSD.html'   # 国际 DRAM 颗粒现货价
+
+def fetch_dramx(step):
+    """dramx.com DRAM 现货价（best-effort，公开数据）：
+    解析 DSD.html 价格表，取匹配规格行的「盘平均」列（原厂正品优先，跳过 eTT 白牌）。
+    页面每交易日午盘/晚盘更新。站点改版会导致解析失败 → 该指标转手动录入。"""
+    import re as _re
+    r = _http_get(DRAMX_URL, headers={'Referer': 'https://www.dramx.com/'}, timeout=25)
+    r.encoding = r.apparent_encoding or 'utf-8'
+    html = r.text
+    rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', html, _re.S | _re.I)
+    match = step['match']
+    want_ett = 'eTT' in match.upper()
+    pts, last_err = {}, '未找到匹配行：%s' % match
+    day = datetime.now().strftime('%Y-%m-%d')
+    for row in rows:
+        cells = [_re.sub(r'<[^>]+>', '', c).strip()
+                 for c in _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.S | _re.I)]
+        if len(cells) < 3:
+            continue          # 公开版行结构：名称 + 日高/日低/盘平均/涨跌幅（4 数据列）
+        name = cells[0]
+        if match.lower() not in name.lower():
+            continue
+        if not want_ett and 'eTT' in name:
+            continue          # 同规格存在 eTT（白牌）行时优先正品
+        nums = []
+        for c in cells[1:]:
+            c = c.replace('%', '').replace(',', '')
+            try:
+                nums.append(float(c))
+            except ValueError:
+                pass
+        # 列序两种布局：日高/日低/盘平均/涨跌幅（公开版）或 日高/日低/盘高/盘低/盘平均/涨跌幅；
+        # 「盘平均」恒在涨跌幅之前 → 取倒数第 2 个数值，对两种布局均成立
+        if len(nums) >= 3 and nums[-2] > 0:
+            pts[day] = nums[-2]
+            break
+    if not pts:
+        raise RuntimeError(last_err)
+    return sorted(pts.items())
+
+
+# ---------------- 第六层 · 行业跟踪数据源 ----------------
+
+SSE_CTFI_URL = 'https://www.sse.net.cn/index/singleIndex?indexType=ctfi'   # 上海航交所 CTFI
+
+
+def fetch_sse_ctfi(step):
+    """上海航交所 CTFI 页：取 CT1（中东-中国 VLCC 主航线）运价指数点。
+    页面为服务端渲染表格；站点改版会导致解析失败 → 自动走下一候选源。"""
+    r = _http_get(SSE_CTFI_URL, timeout=25)
+    r.encoding = r.apparent_encoding or 'utf-8'
+    html = r.text
+    i = html.find('(CT1)')
+    if i < 0:
+        raise RuntimeError('页面无 CT1 行')
+    m = re.search(r'<td[^>]*>\s*([\d,]+(?:\.\d+)?)\s*</td>', html[i:i + 900])
+    if not m:
+        raise RuntimeError('CT1 行未解析到指数点')
+    val = to_num(m.group(1))
+    if not val:
+        raise RuntimeError('CT1 指数点为空')
+    dm = re.search(r'20\d{2}-\d{2}-\d{2}', html)
+    day = dm.group(0) if dm else datetime.now().strftime('%Y-%m-%d')
+    return [(day, val)]
+
+
+def fetch_sw_industry(step):
+    """申万二级行业估值快照（akshare sw_index_second_info）：TTM PE/PB 等当日值。
+    仅快照无历史序列 → 每次运行落一个点，历史由每日增量逐步积累。"""
+    import akshare as ak
+    df = ak.sw_index_second_info()
+    hit = None
+    for _, row in df.iterrows():
+        if step['match'] in str(row.get('行业名称', '')):
+            hit = row
+            break
+    if hit is None:
+        raise RuntimeError('未找到行业：%s' % step['match'])
+    v = to_num(hit.get(step['val']))
+    if v is None:
+        raise RuntimeError('行业 %s 无字段 %s' % (step['match'], step['val']))
+    return [(datetime.now().strftime('%Y-%m-%d'), v)]
+
+
+NPPA_LIST_URL = 'https://www.nppa.gov.cn/bsfw/jggs/yxspjg/gcwlyxspxx/'   # 国产网络游戏审批信息
+
+
+def fetch_nppa(step):
+    """NPPA 游戏版号：列表页取各月公告链接 → 详情页最大序号 = 当月发放数量（月度）。"""
+    from urllib.parse import urljoin
+    r = _http_get(NPPA_LIST_URL, timeout=25)
+    r.encoding = 'utf-8'
+    items = re.findall(r'href="(\./20\d{4}/t\d+_\d+\.html)"[^>]*>\s*20(\d{2})年(\d{1,2})月份', r.text)
+    if not items:
+        raise RuntimeError('列表页无月份公告链接')
+    pts = []
+    for href, yy, mm in items[:step.get('months', 6)]:
+        try:
+            d = _http_get(urljoin(NPPA_LIST_URL, href), timeout=25)
+            d.encoding = 'utf-8'
+            nums = [int(n) for n in re.findall(r'<td[^>]*>\s*(\d{1,4})\s*</td>', d.text)]
+            if nums:
+                pts.append(('20%s-%02d' % (yy, int(mm)), max(nums)))
+        except Exception:   # noqa: BLE001
+            continue        # 单月失败不影响其余月份
+    if not pts:
+        raise RuntimeError('详情页均未解析到版号数量')
+    return pts
+
+
+SA_CAPEX_SYMBOLS = ['MSFT', 'GOOG', 'AMZN', 'META']   # 北美四大云厂
+
+
+def _sa_capex_one(sym):
+    """stockanalysis.com 季度现金流量表：CapEx 行 + 日期序列（均从新到旧，尾部对齐）。"""
+    url = 'https://stockanalysis.com/stocks/%s/financials/cash-flow-statement/' % sym
+    r = _http_get(url, params={'p': 'quarterly'}, timeout=25,
+                  headers={'Referer': 'https://stockanalysis.com/'})
+    html = r.text
+    m = re.search(r'\[("20\d{2}-\d{2}-\d{2}"[,\s]*)+\]', html)
+    dates = re.findall(r'20\d{2}-\d{2}-\d{2}', m.group(0)) if m else []
+    rm = re.search(r'Capital Expenditures[\s\S]*?</tr>', html)
+    if not dates or not rm:
+        raise RuntimeError('%s: 页面结构变化' % sym)
+    cells = re.findall(r'<td[^>]*>\s*([\-()0-9,.]+)\s*</td>', rm.group(0))
+
+    def _pv(c):
+        neg = c.startswith('(') and c.endswith(')')
+        v = to_num(c.strip('()'))
+        if v is None:
+            return None
+        return -abs(v) if (neg or c.startswith('-')) else v
+
+    vals = [_pv(c) for c in cells]
+    out = {}
+    for i in range(1, min(len(dates), len(vals)) + 1):
+        d, v = dates[-i], vals[-i]
+        if v is None:
+            continue
+        y, mo = int(d[:4]), int(d[5:7])
+        if mo not in (3, 6, 9, 12):
+            continue            # 过滤非季末列（如 TTM）
+        out['%dQ%d' % (y, (mo - 1) // 3 + 1)] = abs(v)
+    if not out:
+        raise RuntimeError('%s: 无有效 CapEx' % sym)
+    return out
+
+
+def fetch_sa_capex(step):
+    """四大云厂季度 CapEx 合计同比（%）：AI 算力资本开支最硬的观测。
+    单家抓取失败仍可用其余家汇总（同比口径略偏，但保留信号）。"""
+    acc = {}
+    for sym in step.get('symbols', SA_CAPEX_SYMBOLS):
+        try:
+            for q, v in _sa_capex_one(sym).items():
+                acc[q] = acc.get(q, 0.0) + v
+        except Exception:   # noqa: BLE001
+            continue
+    if not acc:
+        raise RuntimeError('四家全部抓取失败')
+    cur = max(acc)
+    y, q = int(cur[:4]), int(cur[-1])
+    prev = '%dQ%d' % (y - 1, q)
+    if prev not in acc:
+        raise RuntimeError('缺少去年同期 %s，无法计算同比' % prev)
+    return [(cur, round((acc[cur] / acc[prev] - 1.0) * 100.0, 2))]
+
+
+def fetch_local_fin(step):
+    """本地财务档案（data/financial/*.csv，fetch_financial.py 产出）：
+    第 4 行为表头（含「季度」与指标列），第 5 行起为数据（从旧到新，约 18 个季度）。
+    yoy=True 时返回最新期同比 %，否则返回最新期原始值。"""
+    path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         '..', 'data', 'financial', step['file']))
+    if not os.path.exists(path):
+        raise RuntimeError('本地档案不存在：%s' % step['file'])
+    with open(path, encoding='utf-8-sig') as f:
+        rows = list(csv.reader(f))
+    if len(rows) < 5:
+        raise RuntimeError('%s 无数据行' % step['file'])
+    hdr = rows[3]
+    try:
+        iq, ic = hdr.index('季度'), hdr.index(step['col'])
+    except ValueError:
+        raise RuntimeError('%s 表头缺少列：%s' % (step['file'], step['col']))
+
+    pts = {}
+    for r in rows[4:]:
+        if len(r) <= max(iq, ic):
+            continue
+        q, v = (r[iq] or '').strip(), to_num(r[ic])
+        if q and v is not None:
+            pts[q] = v
+    if not pts:
+        raise RuntimeError('%s 无有效数据行' % step['file'])
+
+    def _qk(s):
+        m = re.match(r'^(\d{4})Q([1-4])$', s)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    q0 = max(pts, key=_qk)          # 档案从旧到新排列，按季度序取最新期
+    v0 = pts[q0]
+    if not step.get('yoy'):
+        return [(q0, v0)]
+    m = re.match(r'^(\d{4})Q([1-4])$', q0)
+    if not m:
+        raise RuntimeError('季度格式异常：%s' % q0)
+    prev_q = '%dQ%d' % (int(m.group(1)) - 1, int(m.group(2)))
+    v1 = pts.get(prev_q)
+    if not v1:
+        raise RuntimeError('未找到去年同期 %s' % prev_q)
+    return [(q0, round((v0 / abs(v1) - 1.0) * 100.0, 2))]
+
+
 def fetch_stooq(symbols):
     """stooq 日线 CSV：https://stooq.com/q/d/l/?s=SYM&i=d（取收盘价）"""
     last_err = '无候选符号'
@@ -563,7 +878,8 @@ def fetch_em_kline_sum(step):
 
 
 def fetch_em_dc(step):
-    """东财 datacenter 通用报表（两融余额等）：report + field_candidates + date_field"""
+    """东财 datacenter 通用报表（两融余额等）：report + field_candidates + date_field。
+    date_kind 可选 day|month|quarter（默认 day），决定写入 CSV 的日期粒度。"""
     dc = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
     params = {'reportName': step['report'], 'columns': 'ALL', 'pageNumber': 1,
               'pageSize': step.get('periods', 600), 'sortTypes': '-1',
@@ -571,9 +887,10 @@ def fetch_em_dc(step):
     rows = (_http_get(dc, params=params).json().get('result') or {}).get('data') or []
     factor = step.get('factor', 1.0)
     dfld = step['date_field']
+    dkind = step.get('date_kind', 'day')
     pts = []
     for row in rows:
-        d = parse_ak_date(str(row.get(dfld, ''))[:10], 'day')
+        d = parse_ak_date(str(row.get(dfld, ''))[:10], dkind)
         if not d or '-' not in d:
             continue
         for f in step['field_candidates']:
@@ -597,6 +914,12 @@ FETCHERS = {
     'em_kline': fetch_em_kline,
     'em_kline_sum': fetch_em_kline_sum,
     'em_dc': fetch_em_dc,
+    'dramx': fetch_dramx,
+    'sse_ctfi': fetch_sse_ctfi,
+    'sw_industry': fetch_sw_industry,
+    'nppa': fetch_nppa,
+    'sa_capex': fetch_sa_capex,
+    'local_fin': fetch_local_fin,
 }
 
 
@@ -642,13 +965,19 @@ def parse_ak_date(raw, kind):
     if hasattr(raw, 'strftime'):
         s = raw.strftime('%Y-%m-%d')
     if kind == 'quarter':
+        # 支持 '2026年第2季度' / '2026Q2' / '2026-06-30'
+        m = re.match(r'^(\d{4})年?第?([1-4])季度?$', s)
+        if m:
+            return '%sQ%s' % (m.group(1), m.group(2))
         m = re.match(r'^(\d{4})-(\d{1,2})-', s) or re.match(r'^(\d{4})', s)
         if m:
             y = int(m.group(1)); mo = int(m.group(2)) if len(m.groups()) > 1 and m.group(2) else 1
             return '%dQ%d' % (y, (mo - 1) // 3 + 1)
         return s
     if kind == 'month':
-        m = re.match(r'^(\d{4})-(\d{1,2})$', s) or re.match(r'^(\d{4})-(\d{1,2})-', s) or re.match(r'^(\d{4})年(\d{1,2})', s)
+        # 支持 '2026-07' / '2026年07月份' / '2026.7'（统计局接口常用点号）
+        m = (re.match(r'^(\d{4})-(\d{1,2})$', s) or re.match(r'^(\d{4})-(\d{1,2})-', s)
+             or re.match(r'^(\d{4})年(\d{1,2})', s) or re.match(r'^(\d{4})\.(\d{1,2})$', s))
         if m:
             return '%s-%02d' % (m.group(1), int(m.group(2)))
         return s

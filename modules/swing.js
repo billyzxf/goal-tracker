@@ -1,0 +1,957 @@
+/* ============================================================
+ * 待击球系统（swing）
+ *
+ * 定位：研读财报 → 初筛公司估值 → 导入待击球台账 → 严格按纪律执行买卖。
+ * 仓位架构：核心仓 60%（咖啡罐长持，单票 ≤15%）/ 轮动仓 40%（其中 20% 做高抛低吸止盈，单票 ≤8%）/ 现金·另册周期仓。
+ *
+ * 数据复用原则（V1）：
+ *   - 现价直接复用估值模块 DB.valuation.companies 的 currentPrice / quote（导入股价 CSV 刷新），
+ *     本模块不存价格；未入估值的公司可用条目上的「手填现价」兜底。
+ *   - 展开行附带复用财报跟踪 DB.earnings.rows 的最新披露数据（只读展示）。
+ *
+ * 纪律内建：
+ *   - 距买点% =（现价 − 买点区间上沿）/ 上沿；>15% 显示"禁止击球"（铁律④）
+ *   - 季度复核日临期（≤7天）高亮、过期标红；过期时击球弹窗红字警告（铁律①）
+ *   - 卖出必先对照买入理由三行（防情绪化），卖出三分类：止损/止盈/周期离场
+ *   - 跌破买点先查失效条件（展开行置顶展示），触发 = 撤单/止损（铁律③）
+ * ============================================================ */
+(function(){
+  /* ---------- 常量 ---------- */
+  const POOLS = ['核心候选', '轮动', '另册周期'];
+  const POOL_CLS  = { '核心候选':'green', '轮动':'indigo', '另册周期':'amber' };
+  const POOL_DESC = {
+    '核心候选': '咖啡罐式长期持有（3-10年），单票上限 15%；须过核心仓准入三问',
+    '轮动':    '击球执行 + 止盈操作（其中 20% 做高抛低吸），单票上限 8%',
+    '另册周期': '商品周期仓，只按价格锚操作，不占轮动指标',
+  };
+  /* 组合仓位的目标权重与单票上限（%）——对齐模块头部注释与上面的 POOL_DESC：
+   * 核心仓 60%（单票 ≤15%）/ 轮动仓 40%（单票 ≤8%）/ 另册周期不占目标与上限（只按价格锚操作）。
+   * 「未归类」= 有持仓但不在本台账里的公司，无法按 60/40 归类，单列一档提示。 */
+  const POOL_TARGET = { '核心候选': 60, '轮动': 40 };
+  const POOL_CAP    = { '核心候选': 15, '轮动': 8 };
+  const POOL_UNASSIGNED = '未归类';
+  /* 偏差容忍度（pp）：实际占比偏离目标超过该值才提示加减仓，避免 1-2 个点的噪声刷屏 */
+  const POOL_DEV_TOL = 5;
+  /* 接近上限的预警阈值：单票占比 > 上限 × 该比例时提示「接近上限」 */
+  const POOL_CAP_WARN = 0.8;
+  const STATUSES = ['待击球', '持仓中', '已止盈', '失效撤单'];
+  const STATUS_CLS = { '待击球':'indigo', '持仓中':'pink', '已止盈':'green', '失效撤单':'gray' };
+
+  const RULES = [
+    ['买点时效', '每次财报披露后强制复核买点（中枢变了买点跟着变），锚定过期中枢 = 无效击球。'],
+    ['分批规则', '触及买点区间分 2-3 批建仓，比例 4:3:3；第二批触发 = 较首仓再跌 8-10% 或 季报二次验证（二选一，写死）。'],
+    ['失效条件是一等公民', '跌破买点不是加仓信号——先查失效条件是否触发。触发 = 撤单/止损；未触发 = 按计划加仓。'],
+    ['禁止提前击球', '距买点 >15% 不建仓（长飞 52x 教训：估值恐高才是风控）。'],
+    ['止盈规则化', '轮动仓 20%：到中枢合理区分批减 1/3 → 减持区再减 1/3 → 底仓跟趋势或周期离场信号。'],
+    ['换仓门槛', '击球点到了但仓位满：只有新标的预期赔率显著优于持仓（保守估计差 ≥1 倍空间）才换，否则拒绝击球。'],
+  ];
+
+  /* ---------- 工具 ---------- */
+  function num(v){
+    if(v == null || v === '' || v === '-') return null;
+    const n = Number(String(v).replace(/[,\s%]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+  /* 代码规范化与跨模块查找：实现收敛到统一数据访问层 Repo（modules/data-repo.js），此处仅保留调用入口 */
+  function normTicker(t){ return Repo.normTicker(t); }
+  function tickerKey(t){ return Repo.tickerKey(t); }
+
+  function findVal(ticker){
+    return Repo.companyByTickerLoose(ticker);
+  }
+
+  /* 财报跟踪最新一条（复用 earnings 数据，只读展示） */
+  function earningsLatest(it){
+    const key = tickerKey(it.ticker); if(!key) return null;
+    return Repo.earnLatest(key);
+  }
+
+  /* 现价：优先估值模块行情（导入股价CSV刷新），否则条目手填现价兜底
+     与公司估值模块完全同一数据源（DB.valuation.companies.currentPrice / quote.date） */
+  function priceInfo(it){
+    const c = findVal(it.ticker);
+    if(c && (c.currentPrice || 0) > 0){
+      return { price: c.currentPrice, date: (c.quote && c.quote.date) || '', src: 'quote' };
+    }
+    if((it.manualPrice || 0) > 0) return { price: it.manualPrice, date: '', src: 'manual' };
+    return null;
+  }
+
+  /* 最新估值记录（复用估值模块 c.valuations，按日期倒序取第一条） */
+  function latestValuation(ticker){
+    const c = findVal(ticker);
+    const vals = (c && c.valuations) || [];
+    return vals.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;
+  }
+
+  /* ---------- 中枢 / 减持区：手动优先 + 自动兜底 ----------
+   * 中枢：✎ 手动填的优先；未填时自动取「公司估值」最新估值价（跟随最新估值，不落库）。
+   * 减持区（止盈参考）：手动填的优先；未填时按评级给，评级越高拿得越久：
+   *   S ×1.30 / A ×1.20 / B ×1.10 / C ×1.05；未评级走默认口径 ×1.15（与触发线未评级的回退思路一致）。
+   * 自动值只参与展示与联动计算，不写入条目；一旦在 ✎/复核里填了数字即转为手动，永久锁定。 */
+  const TRIM_MULT = { S: 1.30, A: 1.20, B: 1.10, C: 1.05 };
+  const TRIM_DEFAULT_MULT = 1.15;
+  function effHub(it){
+    if(it.hub != null) return { hub: it.hub, src: 'manual' };
+    const v = latestValuation(it.ticker);
+    return (v && v.estimatedValue > 0) ? { hub: Number(v.estimatedValue), src: 'auto' } : { hub: null, src: 'none' };
+  }
+  function effTrim(it, ri){
+    if(it.trimZone != null) return { trim: it.trimZone, src: 'manual' };
+    const eh = effHub(it);
+    if(eh.hub == null) return { trim: null, src: 'none' };
+    const g = ri && ri.grade;
+    const m = (g && TRIM_MULT[g]) || TRIM_DEFAULT_MULT;
+    return { trim: Math.round(eh.hub * m * 100) / 100, src: (g && TRIM_MULT[g]) ? 'auto' : 'default' };
+  }
+  function trimTip(ri){
+    const g = ri && ri.grade;
+    const m = (g && TRIM_MULT[g]) || TRIM_DEFAULT_MULT;
+    return '未手动填写：按' + (g ? '评级 ' + g : '默认口径') + ' 中枢 ×' + m + ' 给出减持区起点（止盈参考）';
+  }
+
+  /* 距买点% =（现价 − 买点上沿）/ 上沿 ×100；负数 = 已到买点 */
+  function gapPct(it){
+    const pi = priceInfo(it);
+    if(!pi || !it.buyHigh) return null;
+    return (pi.price - it.buyHigh) / it.buyHigh * 100;
+  }
+
+  function fmtN(v, d){
+    if(v == null || isNaN(v)) return '';
+    return String(parseFloat(Number(v).toFixed(d == null ? 2 : d)));
+  }
+  /* 买点区间文案：low+high → "low–high"；仅 high → "≤high"（草案"≤82"口径）；low=high → "≈high" */
+  function fmtBuy(it){
+    if(it.buyHigh == null && it.buyLow == null) return '<span class="muted">—</span>';
+    if(it.buyLow != null && it.buyHigh != null && it.buyLow !== it.buyHigh) return fmtN(it.buyLow) + ' – ' + fmtN(it.buyHigh);
+    const v = it.buyHigh != null ? it.buyHigh : it.buyLow;
+    const pre = it.buyLow == null ? '≤' : '≈';
+    return pre + fmtN(v);
+  }
+  function fmtGap(g){
+    if(g == null) return '<span class="muted">—</span>';
+    const txt = (g > 0 ? '+' : '') + g.toFixed(1) + '%';
+    if(g <= 0) return '<span class="swing-gap-tag hit" title="已到买点区间，按分批计划执行">已到买点</span>';
+    if(g <= 15) return '<span class="swing-gap-tag hot" title="候击区：接近买点，暂不建仓（铁律④）">' + txt + '</span>';
+    return '<span class="swing-gap-tag" title="距买点 >15%，禁止击球（铁律④）">' + txt + '</span>';
+  }
+  /* 复核日距今天数（T00:00:00 规避时区） */
+  function daysTo(ds){
+    if(!ds) return null;
+    const t = new Date(ds + 'T00:00:00') - new Date(dateStr() + 'T00:00:00');
+    return Math.round(t / 86400000);
+  }
+  function addMonths(ds, m){
+    if(!ds) return '';
+    const d = new Date(ds + 'T00:00:00');
+    d.setMonth(d.getMonth() + m);
+    return d.toISOString().slice(0, 10);
+  }
+  function pushEvent(it, text){
+    it.events.push({ date: dateStr(), text: text });
+    if(it.events.length > 50) it.events = it.events.slice(-50);
+    it.updatedAt = dateStr();
+  }
+  /* 评级联动：取估值模块的评级参数（等级 / 仓位权限 / 击球区倍数）；未评级返回 null */
+  function ratingInfo(it){
+    if(!(window.ValHelpers && ValHelpers.ratingCapByTicker)) return null;
+    return ValHelpers.ratingCapByTicker(it.ticker);
+  }
+  function todayWarn(it){
+    const d = daysTo(it.nextReview);
+    return d != null && d < 0;
+  }
+
+  /* ================= 组合仓位（目标达成度 + 单票超限预警） =================
+   * 设计原则：持仓「唯一记账」，本模块不重复维护份额与成本。
+   *   - 持仓份额 / 成本 / 已实现盈亏：取「公司估值 → 投资买卖记录」，
+   *     复用 ValCore.calcPosition 的同一套口径（与估值模块的持仓市值/浮盈亏完全一致）。
+   *   - 仓位归类：取本台账条目上的 pool（核心候选 / 轮动 / 另册周期）；不在台账 → 「未归类」。
+   *   - 账户总资金：DB.swing.capital（用户可填），用于计算真实仓位占比；未填则退化为
+   *     「持仓市值合计」为分母，只能看相对结构（会明确提示）。
+   * 单向只读：本块只读 DB + 计算，不触发任何渲染函数。
+   */
+  function money(n){
+    return (window.ValCore && window.ValCore.fmtMoney) ? window.ValCore.fmtMoney(n) : String(n);
+  }
+  /* 组合持仓明细：只保留当前仍有份额的公司，按市值倒序 */
+  function holdings(){
+    const calcPos = (window.ValCore && window.ValCore.calcPosition) || null;
+    const out = [];
+    ((DB.valuation && DB.valuation.companies) || []).forEach(c => {
+      const pos = calcPos ? calcPos(c.investments || []) : null;
+      if(!pos || !(pos.position > 0)) return;
+      const hasPrice = (c.currentPrice || 0) > 0;
+      const price = hasPrice ? Number(c.currentPrice) : pos.avgCost;   // 无行情时按成本价估算，并标记
+      const mv = pos.position * price;
+      const it = (DB.swing.items || []).find(x => tickerKey(x.ticker) === tickerKey(c.ticker));
+      out.push({
+        name: c.name || c.ticker, ticker: normTicker(c.ticker),
+        pool: it ? it.pool : POOL_UNASSIGNED, inLedger: !!it,
+        shares: pos.position, avgCost: pos.avgCost, mv: mv, cost: pos.cost, pnl: mv - pos.cost,
+        noPrice: !hasPrice,
+      });
+    });
+    return out.sort((a, b) => b.mv - a.mv);
+  }
+  /* 组合仓位面板：目标达成度条 + 单票上限预警 + 数据一致性提示（纯 HTML 产出） */
+  function portPanelHTML(){
+    const hs = holdings();
+    const capital = Number(DB.swing.capital) || 0;
+    const totalMv = hs.reduce((s, x) => s + x.mv, 0);
+    const base = capital > 0 ? capital : totalMv;
+    const cash = capital > 0 ? Math.max(capital - totalMv, 0) : 0;
+    const investedPct = base > 0 ? totalMv / base * 100 : 0;
+
+    let h = '<div class="card port-panel">' +
+      '<div class="pp-head"><h3>⚖ 组合仓位</h3>' +
+      '<span class="muted">目标架构 核心候选 <b>60%</b>（单票 ≤15%） / 轮动 <b>40%</b>（单票 ≤8%） · 持仓取自「📈 公司估值 → 投资买卖记录」 · 已评级公司单票上限 = min(仓位池, 评级权限)，评级 D 禁入</span></div>' +
+      // 账户总资金：仓位占比的分母。未填时退化为「持仓市值合计」，只反映相对结构
+      '<div class="pp-base"><label>账户总资金</label>' +
+      '<input type="number" step="0.01" data-change="swing.capital" value="' + (capital > 0 ? capital : '') + '" placeholder="填入总资金（元）">' +
+      '<span class="muted">持仓市值 <b>' + money(totalMv) + '</b></span>' +
+      (capital > 0
+        ? '<span class="muted">现金（推算） <b>' + money(cash) + '</b> · 总仓位 <b>' + investedPct.toFixed(1) + '%</b></span>'
+        : '<span class="badge amber" title="未填总资金时，占比以「持仓市值合计」为分母，只能反映相对结构，无法判断真实仓位高低">未填总资金 · 占比为相对值</span>') +
+      '</div>';
+
+    // ③ 数据一致性提示：台账与持仓记录对不上时明确指出来（避免"看着有仓、其实没数"）
+    const heldKeys = new Set(hs.map(x => tickerKey(x.ticker)));
+    const ghost = (DB.swing.items || []).filter(x => x.status === '持仓中' && !heldKeys.has(tickerKey(x.ticker)));
+    const unassigned = hs.filter(x => x.pool === POOL_UNASSIGNED);
+    let warnHTML = '';
+    if(ghost.length || unassigned.length){
+      warnHTML += '<div class="pp-warn">';
+      if(ghost.length) warnHTML += '<div>⚠ 台账中 <b>' + ghost.length + '</b> 条标记「持仓中」但查不到持仓记录（份额/成本无法统计）：' +
+        ghost.map(x => esc(x.name || x.ticker)).join('、') + ' —— 请到公司估值的「📝 投资买卖记录」补录买入。</div>';
+      if(unassigned.length) warnHTML += '<div>⚠ <b>' + unassigned.length + '</b> 家持仓不在待击球台账，无法按 60/40 归类：' +
+        unassigned.map(x => esc(x.name)).join('、') + ' —— 可在待击球「＋ 新增标的」补上并选定仓位类型。</div>';
+      warnHTML += '</div>';
+    }
+
+    if(!hs.length){
+      h += '<div class="empty">还没有持仓份额。到「📈 公司估值」→ 公司详情 →「📝 投资买卖记录」添加买入记录（价格 + 股数）' +
+        '，并在本台账给该公司选定仓位类型 —— 占比达成度与单票超限预警会自动算出。</div>' + warnHTML + '</div>';
+      return h;
+    }
+
+    // ① 各仓位达成度：实际占比 vs 目标（另册周期 / 未归类 不计目标，仅展示）
+    h += '<div class="pp-groups">';
+    POOLS.concat([POOL_UNASSIGNED]).forEach(p => {
+      const arr = hs.filter(x => x.pool === p);
+      const mv = arr.reduce((s, x) => s + x.mv, 0);
+      const pct = base > 0 ? mv / base * 100 : 0;
+      const target = POOL_TARGET[p] != null ? POOL_TARGET[p] : null;
+      const dev = target != null ? pct - target : null;
+      const devCls = dev == null ? 'muted' : (dev < -POOL_DEV_TOL ? 'pp-low' : (dev > POOL_DEV_TOL ? 'pp-high' : 'pp-ok'));
+      const devTxt = dev == null ? '—'
+        : (dev >= 0 ? '+' : '') + dev.toFixed(1) + 'pp' + (dev < -POOL_DEV_TOL ? ' 需加仓' : (dev > POOL_DEV_TOL ? ' 超配' : ''));
+      h += '<div class="pp-group">' +
+        '<div class="pp-g-name">' + esc(p) + ' <span class="muted">' + arr.length + ' 只 · ' + money(mv) + '</span></div>' +
+        '<div class="pp-bar"><i style="width:' + Math.min(pct, 100).toFixed(1) + '%"></i>' +
+          (target != null ? '<u style="left:' + Math.min(target, 100) + '%" title="目标 ' + target + '%"></u>' : '') + '</div>' +
+        '<div class="pp-g-num"><b>' + pct.toFixed(1) + '%</b>' +
+          '<span class="muted">' + (target != null ? ' / 目标 ' + target + '%' : ' / 不计目标') + '</span></div>' +
+        '<div class="pp-g-dev ' + devCls + '">' + devTxt + '</div>' +
+        '</div>';
+    });
+    h += '</div>';
+
+    // ② 单票明细：占比 vs 该仓位类型的单票上限
+    h += '<div class="wide-table-wrap"><table class="val-table pp-table"><thead><tr>' +
+      '<th>标的</th><th>仓位</th><th class="num">份额</th><th class="num">均价</th><th class="num">持仓市值</th>' +
+      '<th class="num">占比</th><th class="num">上限</th><th class="num">浮盈亏</th><th>提示</th>' +
+      '</tr></thead><tbody>';
+    hs.forEach(x => {
+      const pct = base > 0 ? x.mv / base * 100 : 0;
+      // 单票上限 = min(仓位池上限, 评级仓位权限)；评级 D = 禁入（上限 0）
+      const rc = (window.ValHelpers && ValHelpers.ratingCapByTicker) ? ValHelpers.ratingCapByTicker(x.ticker) : null;
+      let cap = POOL_CAP[x.pool] != null ? POOL_CAP[x.pool] : null;
+      let capNote = '';
+      if(rc){
+        if(rc.grade === 'D') cap = 0;
+        else if(cap == null || rc.posCap < cap){ cap = rc.posCap; capNote = '（评级 ' + rc.grade + '）'; }
+      }
+      const over = cap != null && pct > cap;
+      let tip = '';
+      if(over && rc && rc.grade === 'D') tip += '<span class="badge red" title="评级 D：禁入，按止损纪律退出">评级 D 禁入</span> ';
+      if(over) tip += '<span class="badge red">超限 ' + (pct - cap).toFixed(2) + 'pp</span>';
+      else if(cap != null && pct > cap * POOL_CAP_WARN) tip += '<span class="badge amber">接近上限</span>';
+      if(x.pool === POOL_UNASSIGNED) tip += ' <span class="badge gray" title="该公司不在待击球台账，无法按 60/40 归类">未归类</span>';
+      if(x.noPrice) tip += ' <span class="badge gray" title="没有行情快照，市值按持仓成本价估算">无行情</span>';
+      h += '<tr' + (over ? ' class="pp-over-row"' : '') + '>' +
+        '<td><b>' + esc(x.name) + '</b><div class="muted" style="font-size:11px">' + esc(x.ticker) + '</div></td>' +
+        '<td>' + (x.pool === POOL_UNASSIGNED ? '<span class="muted">' + esc(x.pool) + '</span>'
+          : '<span class="badge ' + (POOL_CLS[x.pool] || 'gray') + '">' + esc(x.pool) + '</span>') + '</td>' +
+        '<td class="num">' + x.shares.toFixed(0) + '</td>' +
+        '<td class="num">' + x.avgCost.toFixed(2) + '</td>' +
+        '<td class="num">' + money(x.mv) + '</td>' +
+        '<td class="num"><b>' + pct.toFixed(2) + '%</b></td>' +
+        '<td class="num muted" title="' + (capNote ? '评级收紧：' + capNote.replace(/[()（）]/g, '') : '') + '">' + (cap != null ? cap + '%' + capNote : '—') + '</td>' +
+        '<td class="num ' + (x.pnl >= 0 ? 'up' : 'down') + '">' + money(x.pnl) + '</td>' +
+        '<td>' + (tip || '<span class="muted">正常</span>') + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table></div>';
+
+    h += warnHTML;
+    h += '</div>';
+    return h;
+  }
+
+  /* ---------- 默认数据 ---------- */
+  function mk(o){
+    return Object.assign({
+      id: uid(), form: '', pool: '轮动', hub: null, buyLow: null, buyHigh: null, trimZone: null,
+      invalidConds: [], cycleAnchor: '', status: '待击球', manualPrice: null,
+      nextReview: '2026-10-31', reasons: { r1:'', r2:'', r3:'' }, note: '',
+      events: [], createdAt: dateStr(), updatedAt: dateStr(),
+    }, o);
+  }
+  function seed(){
+    return { seedDataVersion: 1, items: [
+      /* —— 首批导入标的（2026-09-03 收盘草案，现价以估值模块行情为准 / 未入估值的用手填价兜底） —— */
+      mk({ id:'sw-seed-01', ticker:'002008.SZ', name:'大族激光', form:'AI PCB 设备超预期', buyHigh:82,
+           invalidConds:['在手订单增速转负','H1 现金流未回补'],
+           note:'已估值：valuations/大族激光_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-02', ticker:'001389.SZ', name:'广合科技', form:'AI 服务器 PCB 超预期', buyHigh:145, manualPrice:154.36,
+           invalidConds:['Q3 毛利率跌破 38%','云擎智造爬坡失败'] }),
+      mk({ id:'sw-seed-03', ticker:'003022.SZ', name:'联泓新科', form:'EVA/新材料超预期', buyHigh:18.3, buyLow:18.3, manualPrice:19.54,
+           invalidConds:['EVA 价格指数破位下行','格润爬坡不及预期'] }),
+      mk({ id:'sw-seed-04', ticker:'603061.SH', name:'金海通', form:'测试分选机超预期', buyHigh:290,
+           invalidConds:['H2 营收 <8亿（指引失效）','Q3 现金流未回补'],
+           note:'已估值：valuations/金海通_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-05', ticker:'002841.SZ', name:'视源股份', form:'板卡+教育业务修复', buyHigh:45, buyLow:45, manualPrice:49.72,
+           invalidConds:['存储涨价退坡后板卡毛利率大幅回吐','Q3 现金流未回补'] }),
+      mk({ id:'sw-seed-06', ticker:'002648.SZ', name:'卫星化学', form:'轻烃价差超预期', buyHigh:25, buyLow:25,
+           invalidConds:['乙烷价格趋势性反弹超 30%'],
+           note:'已估值：valuations/卫星化学_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-07', ticker:'001232.SZ', name:'嘉立创', form:'EDA+多层板超预期', buyHigh:115, buyLow:115,
+           invalidConds:['多层板增速转负','现金流恶化'],
+           note:'已估值：valuations/嘉立创_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-08', ticker:'600487.SH', name:'亨通光电', form:'海缆+光通信超预期', buyHigh:59, buyLow:59,
+           invalidConds:['海缆订单萎缩','光棒价格战重启'],
+           note:'已估值：valuations/亨通光电_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-09', ticker:'603893.SH', name:'瑞芯微', form:'SoC 国产化超预期', buyHigh:130,
+           invalidConds:['Q3 毛利率跌破 45%','RK182X 放量不及预期'],
+           note:'已估值：valuations/瑞芯微_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-10', ticker:'600601.SH', name:'方正科技', form:'PCB 产能释放超预期', buyHigh:9.5, buyLow:9.5,
+           invalidConds:['Q3 毛利率环比回落','2027 断档提前'],
+           note:'已估值：valuations/方正科技_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-11', ticker:'601869.SH', name:'长飞光纤', form:'空芯光纤超预期', buyHigh:220, buyLow:220, manualPrice:406.94,
+           invalidConds:['空芯光纤集采价大幅下调'] }),
+      mk({ id:'sw-seed-12', ticker:'002916.SZ', name:'深南电路', form:'AI PCB + 载板超预期', buyHigh:300,
+           invalidConds:['AI PCB 订单增速转负','毛利率连续两季回落'],
+           note:'已估值：失效条件沿用 valuations/深南电路_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-13', ticker:'002602.SZ', name:'世纪华通', form:'游戏流水超预期', buyHigh:12.5, manualPrice:13.97,
+           invalidConds:['游戏流水增速转负','新游表现不及预期'],
+           note:'已估值：失效条件沿用 valuations/世纪华通_估值报告_20260831.md（如未导入该报告请自行校准）' }),
+      mk({ id:'sw-seed-14', ticker:'603019.SH', name:'中科曙光', form:'算力服务器超预期', buyHigh:62,
+           invalidConds:['海光信息股价大幅波动','算力订单增速转负'],
+           note:'已估值（SOTP 分部，海光敞口）：valuations/中科曙光_估值报告_20260831.md' }),
+      mk({ id:'sw-seed-15', ticker:'603268.SH', name:'松发股份', form:'新造船周期超预期', buyHigh:130,
+           invalidConds:['新造船价格指数环比转负'],
+           note:'已估值：valuations/松发股份_估值报告_20260831.md' }),
+    ] };
+  }
+
+  /* ---------- 渲染 ---------- */
+  function statCard(label, val, sub){
+    return '<div class="val-stat"><div class="vs-label">' + label + '</div><div class="vs-value">' + val + '</div>' +
+      (sub ? '<div class="vs-sub muted">' + sub + '</div>' : '') + '</div>';
+  }
+
+  function renderSwing(){
+    state.swingKw = state.swingKw || '';
+    state.swingStatus = state.swingStatus || '全部';
+    state.swingPool = state.swingPool || '全部';
+    state.swingSort = state.swingSort || 'gap';
+    state.swingSortDir = state.swingSortDir || 'asc';
+
+    const items = DB.swing.items || [];
+    /* 统计（只统计待击球/持仓中） */
+    const active = items.filter(x => x.status === '待击球' || x.status === '持仓中');
+    const hitCnt   = items.filter(x => x.status === '待击球' && gapPct(x) != null && gapPct(x) <= 0).length;
+    const hotCnt   = items.filter(x => x.status === '待击球' && gapPct(x) != null && gapPct(x) > 0 && gapPct(x) <= 15).length;
+    const reviewCnt = active.filter(x => { const d = daysTo(x.nextReview); return d != null && d <= 7; }).length;
+    const lastPriceDate = items.map(x => priceInfo(x)).filter(p => p && p.date).map(p => p.date).sort().pop() || '';
+
+    /* 筛选 + 排序 */
+    let list = items.slice();
+    if(state.swingStatus !== '全部') list = list.filter(x => x.status === state.swingStatus);
+    if(state.swingPool !== '全部') list = list.filter(x => x.pool === state.swingPool);
+    if(state.swingKw){
+      const kw = state.swingKw.toLowerCase();
+      list = list.filter(x => kwMatch((x.name || '') + ' ' + normTicker(x.ticker) + ' ' + (x.form || ''), kw));
+    }
+    const dir = state.swingSortDir === 'asc' ? 1 : -1;
+    const key = state.swingSort;
+    list.sort((a, b) => {
+      let va, vb;
+      if(key === 'gap'){ va = gapPct(a); vb = gapPct(b); }
+      else { va = a[key]; vb = b[key]; }
+      if(va == null && vb == null) return 0;
+      if(va == null) return 1;          // 空值沉底
+      if(vb == null) return -1;
+      if(typeof va === 'string') return va.localeCompare(vb) * dir;
+      return (va - vb) * dir;
+    });
+
+    /* 头部 */
+    let h = header('🎯 待击球', '击球纪律台账 · 严格按纪律执行买卖 · 现价/名称复用估值与财报跟踪模块' +
+      (lastPriceDate ? ' · 行情快照 ' + esc(lastPriceDate) : ''),
+      '<button class="btn primary sm" data-action="swing.add">＋ 新增标的</button>');
+
+    /* 统计卡 */
+    h += '<div class="val-summary-grid">' +
+      statCard('待击球', items.filter(x => x.status === '待击球').length, '台账中等待买点的标的') +
+      statCard('持仓中', items.filter(x => x.status === '持仓中').length, '已击球持仓') +
+      statCard('已到买点', hitCnt, '距买点 ≤0（待击球）') +
+      statCard('候击区', hotCnt, '0 < 距买点 ≤15%（铁律④禁建仓）') +
+      statCard('复核临期', reviewCnt, '复核日 ≤7 天 / 已过期，需强制重估买点') +
+      '</div>';
+
+    /* 仓位架构卡 + 六铁律卡 */
+    h += '<div class="swing-arch">' +
+      POOLS.map(p => '<div class="card swing-arch-col"><b>' + p + '</b><div class="muted" style="font-size:12px;margin-top:4px">' + POOL_DESC[p] + '</div></div>').join('') +
+      '</div>';
+    h += '<div class="card" style="margin:10px 0">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between"><b>⚾ 击球六条铁律</b>' +
+      '<button class="btn ghost sm" data-action="swing.toggleRules">' + (state.swingRulesOpen ? '收起' : '展开') + '</button></div>';
+    if(state.swingRulesOpen){
+      h += '<ol class="swing-rule-list">' + RULES.map(r => '<li><b>' + r[0] + '：</b>' + r[1] + '</li>').join('') + '</ol>';
+      h += '<div class="hint" style="margin-top:6px">核心仓准入三问：值得持 3 年吗？失效条件清单写了吗？跌 30% 你会加仓还是逃跑？——答不好就留在轮动仓。</div>';
+    }
+    h += '</div>';
+
+    /* 组合仓位：目标达成度 + 单票超限预警（持仓取自公司估值，本模块不重复记账） */
+    h += portPanelHTML();
+
+    /* 筛选行 */
+    h += '<div class="chips" style="margin-bottom:8px">' +
+      ['全部'].concat(STATUSES).map(s => '<button class="chip' + (state.swingStatus === s ? ' active' : '') + '" data-action="swing.fStatus" data-v="' + s + '">' + s + '</button>').join('') +
+      '<span class="muted" style="margin:0 4px">|</span>' +
+      ['全部'].concat(POOLS).map(s => '<button class="chip' + (state.swingPool === s ? ' active' : '') + '" data-action="swing.fPool" data-v="' + s + '">' + s + '</button>').join('') +
+      '</div>';
+    h += '<div style="margin-bottom:10px"><input type="text" class="kw-search" data-input="swing.kw" value="' + esc(state.swingKw) + '" placeholder="搜索名称 / 代码 / 形态（支持拼音）" style="max-width:320px"></div>';
+
+    /* 主表 */
+    if(!list.length){
+      h += '<div class="empty">没有符合条件的标的。点击「＋ 新增标的」添加，或在估值模块公司详情页点「🎯 加入待击球」。</div>';
+      return h;
+    }
+    const th = (label, k, extraCls) => {
+      const arrow = state.swingSort === k ? (state.swingSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      return '<th' + (extraCls ? ' class="' + extraCls + '"' : '') + (k ? ' data-action="swing.sort" data-key="' + k + '" style="cursor:pointer"' : '') + '>' + label + arrow + '</th>';
+    };
+    h += '<div class="wide-table-wrap"><table class="val-table"><thead><tr>' +
+      th('标的') + th('仓位') + th('状态') + th('估值数据') + th('买点区间', 'buyHigh') + th('中枢', 'hub', 'swing-opt') +
+      th('减持区', 'trimZone', 'swing-opt') + th('现价') + th('距买点', 'gap') +
+      th('复核日', 'nextReview') + th('操作') +
+      '</tr></thead><tbody>';
+    list.forEach(it => { h += rowHtml(it); if(state.swingDetailId === it.id) h += detailHtml(it); });
+    h += '</tbody></table></div>';
+    return h;
+  }
+
+  function rowHtml(it){
+    const c = findVal(it.ticker);
+    const pi = priceInfo(it);
+    const d = daysTo(it.nextReview);
+    const ri = ratingInfo(it);
+    const eh = effHub(it);          // 有效中枢：手动优先，未填自动取最新估值
+    const et = effTrim(it, ri);     // 有效减持区：手动优先，未填按评级给止盈参考
+    let reviewHtml = esc(it.nextReview || '—');
+    if(d != null && d < 0) reviewHtml = '<span class="swing-review-over">' + reviewHtml + ' ⚠需重估</span>';
+    else if(d != null && d <= 7) reviewHtml = '<span class="swing-review-warn">' + reviewHtml + '</span>';
+
+    /* 操作列：按状态出现 */
+    let ops = '';
+    if(it.status === '待击球') ops += '<button class="btn primary sm" data-action="swing.hit" data-id="' + it.id + '">击球</button> ';
+    if(it.status === '持仓中') ops += '<button class="btn sm" data-action="swing.sell" data-id="' + it.id + '">卖出</button> ';
+    ops += '<button class="btn ghost sm" data-action="swing.review" data-id="' + it.id + '" title="财报披露后强制复核买点（铁律①）">复核</button> ';
+    if(ri && ri.tol && eh.hub != null) ops += '<button class="icon-btn" data-action="swing.recalcRating" data-id="' + it.id + '" title="按评级 ' + ri.grade + ' 重算买点：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + '">🏛↻</button> ';
+    ops += '<button class="icon-btn" data-action="swing.toggleRow" data-id="' + it.id + '" title="展开详情">▾</button>' +
+           '<button class="icon-btn" data-action="swing.edit" data-id="' + it.id + '" title="编辑">✎</button>' +
+           '<button class="icon-btn" data-action="swing.del" data-id="' + it.id + '" title="删除（不进回收站，建议先导出备份）">✕</button>';
+
+    /* 名称：已入估值可点击跳转估值详情；未入估值行内「➕估值」一键补齐。
+       评级徽章紧跟名称后方（与财报跟踪同布局）；不展示 form 说明（数据不全反而参差） */
+    const nm = esc(it.name || (c && c.name) || it.ticker);
+    const nameHtml = (c
+      ? '<b class="swing-name-link" data-action="swing.openVal" data-ticker="' + esc(it.ticker) + '" title="到公司估值模块查看详情">' + nm + '</b>'
+      : '<b>' + nm + '</b> <button class="btn ghost sm" data-action="swing.addVal" data-ticker="' + esc(it.ticker) + '" data-name="' + esc(it.name || '') + '" title="加入公司估值，获得现价/行情/估值数据">➕估值</button>') +
+      ' ' + ((window.ValCore && ValCore.ratingBadgeHTML) ? ValCore.ratingBadgeHTML(c ? c.rating : null) : '') +
+      '<div class="muted" style="font-size:11px">' + esc(normTicker(it.ticker)) +
+      (c ? '' : ' · <span title="未加入估值模块，现价为手填">未入估值</span>') + '</div>';
+
+    /* 买点 cell：区间 + 评级偏离/禁入提示（偏离 = 当前区间 ≠ 评级建议击球区，点操作列 🏛↻ 一键重算） */
+    let buyCell = fmtBuy(it);
+    if(ri && ri.tol && eh.hub != null){
+      const sugLo = Math.round(eh.hub * ri.tol[0] * 100) / 100;
+      const sugHi = Math.round(eh.hub * ri.tol[1] * 100) / 100;
+      const off = it.buyLow == null || it.buyHigh == null ||
+        Math.abs((it.buyLow || 0) - sugLo) > 0.01 || Math.abs((it.buyHigh || 0) - sugHi) > 0.01;
+      if(off) buyCell += ' <span class="badge amber" title="评级 ' + ri.grade + ' 建议击球区 ' + fmtN(sugLo) + '–' + fmtN(sugHi) + '（中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? ' 自动' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + '）">偏离</span>';
+    }
+    if(ri && ri.grade === 'D') buyCell += ' <span class="badge red" title="评级 D：禁入">禁入</span>';
+
+    /* 估值数据：估值模块最新一条估值记录（价格 + 日期 + 方法） */
+    const v = latestValuation(it.ticker);
+    const valHtml = v
+      ? fmtN(v.estimatedValue) + '<div class="muted" style="font-size:11px">' + esc(v.date || '') + (v.method ? ' · ' + esc(v.method) : '') + '</div>'
+      : (c ? '<span class="muted" style="font-size:12px">无估值记录</span>' : '<span class="muted">—</span>');
+
+    /* 现价 cell：quote 来源时带当日涨跌幅（口径与估值模块一致，涨红跌绿） */
+    let priceHtml = '<span class="muted">—</span>';
+    if(pi){
+      const q = (pi.src === 'quote' && c && c.quote) ? c.quote : null;
+      let sub;
+      if(q && (q.pct != null || q.chg != null)){
+        const cls = (q.pct || 0) >= 0 ? 'up' : 'down';
+        const flag = (q.pct || 0) > 0 ? '▲' : ((q.pct || 0) < 0 ? '▼' : '');
+        const chgStr = q.chg != null ? ((q.chg > 0 ? '+' : '') + q.chg.toFixed(2)) : '';
+        const pctStr = q.pct != null ? ((q.pct > 0 ? '+' : '') + q.pct.toFixed(2) + '%') : '';
+        sub = '<div class="' + cls + '" style="font-size:11px"' + (q.date ? ' title="行情快照 ' + esc(q.date) + '"' : '') + '>' +
+          [flag, chgStr, pctStr].filter(Boolean).join(' ') + '</div>';
+      } else {
+        sub = '<div class="muted" style="font-size:11px">' + (pi.src === 'quote' ? esc(pi.date || '行情') : '手填') + '</div>';
+      }
+      priceHtml = fmtN(pi.price) + sub;
+    }
+
+    return '<tr data-action="swing.toggleRow" data-id="' + it.id + '" style="cursor:pointer">' +
+      '<td>' + nameHtml + '</td>' +
+      '<td><span class="badge ' + (POOL_CLS[it.pool] || 'gray') + '" title="' + esc(POOL_DESC[it.pool] || '') + '">' + esc(it.pool) + '</span></td>' +
+      '<td><span class="badge ' + (STATUS_CLS[it.status] || 'gray') + '">' + esc(it.status) + '</span></td>' +
+      '<td>' + valHtml + '</td>' +
+      '<td>' + buyCell + '</td>' +
+      '<td class="swing-opt">' + (eh.hub != null ? fmtN(eh.hub) +
+        (eh.src === 'auto' ? ' <span class="muted" style="font-size:10px" title="未手动填写，自动取「公司估值」最新估值价；✎ 编辑里填写后转为手动">自动</span>' : '') : '<span class="muted">—</span>') + '</td>' +
+      '<td class="swing-opt">' + (et.trim != null ? fmtN(et.trim) +
+        (et.src === 'manual' ? '' : ' <span class="muted" style="font-size:10px" title="' + esc(trimTip(ri)) + '">' + (et.src === 'auto' ? esc(((ri && ri.grade) || '') + '级参考') : '默认参考') + '</span>') : '<span class="muted">—</span>') + '</td>' +
+      '<td>' + priceHtml + '</td>' +
+      '<td>' + fmtGap(gapPct(it)) + '</td>' +
+      '<td>' + reviewHtml + '</td>' +
+      '<td style="white-space:nowrap">' + ops + '</td>' +
+      '</tr>';
+  }
+
+  function detailHtml(it){
+    const e = earningsLatest(it);
+    const rs = it.reasons || {};
+    const hasReasons = rs.r1 || rs.r2 || rs.r3;
+
+    let h = '<tr class="swing-detail-row"><td colspan="11">';
+    h += '<div class="swing-detail-grid">';
+
+    /* 评级联动：等级 / 仓位权限 / 建议击球区（= 有效中枢 × 评级宽容度）+ 减持区止盈参考 */
+    const ri = ratingInfo(it);
+    const eh = effHub(it);
+    const et = effTrim(it, ri);
+    if(ri){
+      const canRecalc = ri.tol && eh.hub != null;
+      h += '<div style="grid-column:1/-1;font-size:12px">' +
+        ((window.ValCore && ValCore.ratingBadgeHTML) ? ValCore.ratingBadgeHTML({ grade: ri.grade }) : '') +
+        ' <span class="muted">仓位权限 ≤' + ri.posCap + '%' +
+        (canRecalc
+          ? ' · 建议击球区 = 中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' = ' + fmtN(eh.hub * ri.tol[0]) + ' – ' + fmtN(eh.hub * ri.tol[1])
+          : (ri.tol ? ' · 未填估值中枢且估值模块暂无估值记录（✎ 编辑里可填）' : '')) +
+        (ri.grade === 'D' ? ' · 禁入' : '') + '</span>' +
+        (canRecalc ? ' <button class="btn ghost sm" style="padding:0 8px;font-size:11px" data-action="swing.recalcRating" data-id="' + it.id + '" title="买点区间 = 中枢 × 评级宽容度">按评级重算买点</button>' : '') +
+        (et.trim != null && et.src !== 'manual' ? ' <span class="muted" title="' + esc(trimTip(ri)) + '">· 减持区参考 ' + fmtN(et.trim) + '</span>' : '') +
+        '</div>';
+    }
+
+    /* 失效条件（一等公民，置顶） */
+    h += '<div><b>⛔ 失效条件</b>（跌破买点先查这里，触发 = 撤单/止损，铁律③）<ul class="swing-events">' +
+      (it.invalidConds && it.invalidConds.length ? it.invalidConds.map(x => '<li>' + esc(x) + '</li>').join('') : '<li class="muted">（未填写——去「✎ 编辑」补上，失效条件是一等公民）</li>') + '</ul></div>';
+
+    /* 买入理由三行 */
+    h += '<div><b>📝 买入理由（三行）</b>' + (hasReasons ? '' : '<span class="muted">（击球时填写，卖出时对照复盘）</span>') +
+      '<ul class="swing-events">' +
+      '<li>' + (rs.r1 ? esc(rs.r1) : '<span class="muted">① —</span>') + '</li>' +
+      '<li>' + (rs.r2 ? esc(rs.r2) : '<span class="muted">② —</span>') + '</li>' +
+      '<li>' + (rs.r3 ? esc(rs.r3) : '<span class="muted">③ —</span>') + '</li></ul></div>';
+
+    /* 财报跟踪复用（口径与 earnings.js 一致：同比/毛利率列原始值即百分数） */
+    h += '<div><b>📊 财报跟踪（最新）</b>';
+    if(e){
+      const pct = (k, d) => { const v = num(e[k]); return v == null ? '—' : v.toFixed(d == null ? 1 : d) + '%'; };
+      const qty = (k, d) => { const v = num(e[k]); return v == null ? '—' : v.toFixed(d == null ? 2 : d) + ' 亿'; };
+      h += '<ul class="swing-events"><li>披露日期 ' + esc(e['披露日期'] || '—') + ' · ' + esc(e['季度'] || e['报告期'] || '') + '</li>' +
+        '<li>营收同比 ' + pct('营收同比') +
+        ' · 扣非同比 ' + pct('扣非净利同比') +
+        ' · 毛利率 ' + pct('毛利率') + '</li>' +
+        '<li>经营现金流 ' + qty('经营现金流') + '（现金流未回补 = 常见失效信号）</li></ul>';
+    } else {
+      h += '<div class="muted" style="font-size:12px">财报跟踪模块暂无该公司数据（导入财报 CSV 后自动带出）</div>';
+    }
+    h += '</div>';
+
+    /* 周期离场锚 + 备注 */
+    if(it.pool === '另册周期' || it.cycleAnchor){
+      h += '<div><b>⚓ 周期离场锚</b><div style="font-size:13px;margin-top:4px">' + (it.cycleAnchor ? esc(it.cycleAnchor) : '<span class="muted">未填写</span>') + '</div><div class="hint">价格锚见顶 → 周期离场，不看 PE（卖出三分类）</div></div>';
+    }
+    if(it.note){
+      h += '<div><b>📌 备注</b><div style="font-size:13px;margin-top:4px">' + esc(it.note) + '</div></div>';
+    }
+
+    /* 事件记录 */
+    h += '<div><b>🕘 事件记录</b><ul class="swing-events">' +
+      (it.events && it.events.length ? it.events.slice(-10).reverse().map(ev => '<li><span class="muted">' + esc(ev.date) + '</span> ' + esc(ev.text) + '</li>').join('') : '<li class="muted">暂无</li>') +
+      '</ul></div>';
+
+    h += '</div>';
+    h += '</td></tr>';
+    return h;
+  }
+
+  /* ---------- 弹窗 ---------- */
+  function fieldNum(name, label, v, step, ph){
+    return '<div class="field"><label>' + label + '</label><input type="number" step="' + (step || '0.01') + '" name="' + name + '" value="' + (v == null ? '' : v) + '" placeholder="' + (ph || '') + '"></div>';
+  }
+  function openForm(it){
+    const isNew = !it;
+    it = it || mk({});
+    openModal(isNew ? '新增击球标的' : '编辑 · ' + (it.name || it.ticker),
+      '<div class="quick-row">' +
+        '<div class="field" style="flex:1"><label>公司名称 <span style="color:var(--red)">*</span></label><input type="text" name="name" required value="' + esc(it.name || '') + '" placeholder="如：大族激光"></div>' +
+        '<div class="field" style="flex:none;width:150px"><label>代码 <span style="color:var(--red)">*</span></label><input type="text" name="ticker" required value="' + esc(normTicker(it.ticker)) + '" placeholder="如：002008.SZ"></div>' +
+        '<div class="field" style="flex:1;min-width:140px"><label>超预期形态</label><input type="text" name="form" value="' + esc(it.form || '') + '" placeholder="如：第2种超预期形态"></div>' +
+      '</div>' +
+      '<div class="quick-row">' +
+        '<div class="field"><label>仓位类型</label><select name="pool">' + POOLS.map(p => '<option' + (it.pool === p ? ' selected' : '') + ' title="' + esc(POOL_DESC[p]) + '">' + p + '</option>').join('') + '</select></div>' +
+        fieldNum('hub', '估值中枢', it.hub) +
+      '</div>' +
+      '<div class="quick-row">' +
+        fieldNum('buyLow', '买点下沿（可空）', it.buyLow) +
+        fieldNum('buyHigh', '买点上沿（距买点%以此计算）', it.buyHigh) +
+        fieldNum('trimZone', '减持区', it.trimZone) +
+      '</div>' +
+      '<div class="quick-row">' +
+        '<div class="field" style="flex:1"><label>季度复核日（财报披露后强制重估）</label><input type="date" name="nextReview" value="' + esc(it.nextReview || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label>失效条件（每行一条，可验证、结构化；触发 = 无条件撤单/止损）</label>' +
+        '<textarea name="invalidConds" rows="3" placeholder="如：Q3 经营现金流未回补&#10;如：在手订单增速转负">' + esc((it.invalidConds || []).join('\n')) + '</textarea></div>' +
+      '<div class="quick-row">' +
+        fieldNum('manualPrice', '手填现价（仅未入估值时用）', it.manualPrice) +
+        '<div class="field" style="flex:2"><label>周期离场锚（另册周期专用，如 新造船价格指数）</label><input type="text" name="cycleAnchor" value="' + esc(it.cycleAnchor || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label>备注（估值报告位置、核心逻辑等）</label><textarea name="note" rows="2">' + esc(it.note || '') + '</textarea></div>' +
+      '<input type="hidden" name="id" value="' + (it.id || '') + '">',
+      'swing.form');
+  }
+  function openHit(it){
+    const late = todayWarn(it);
+    const g = gapPct(it);
+    const ri = ratingInfo(it);
+    let warn = '';
+    if(late) warn = '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ 复核日 ' + esc(it.nextReview) + ' 已过期：锚定过期中枢 = 无效击球（铁律①）。请先「复核」更新买点，再击球。</div>';
+    if(g != null && g > 15) warn += '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ 当前距买点 ' + g.toFixed(1) + '%（>15%）：禁止提前击球（铁律④）。</div>';
+    if(ri && ri.grade === 'D') warn += '<div style="color:var(--red);font-weight:600;margin-bottom:8px">⛔ 评级 D：禁入。不允许击球；已有持仓按止损纪律退出（评级联动）。</div>';
+    openModal('🎯 击球 · ' + (it.name || it.ticker),
+      warn +
+      '<div class="hint" style="margin-bottom:10px">买点 ' + fmtBuy(it) + ' · 现价距买点 ' + (g == null ? '—' : g.toFixed(1) + '%') + ' · 分批 4:3:3，第二批触发 = 再跌 8-10% 或 季报二次验证（铁律②）。跌破买点先查失效条件（铁律③）。' +
+      (ri ? (ri.tol ? ' 评级 ' + ri.grade + '：单票仓位 ≤' + ri.posCap + '%。' : ' 评级 D：禁入。') : '') + '</div>' +
+      '<div class="field"><label>买入理由 ①（必填）</label><textarea name="r1" rows="2" required></textarea></div>' +
+      '<div class="field"><label>买入理由 ②</label><textarea name="r2" rows="2"></textarea></div>' +
+      '<div class="field"><label>买入理由 ③</label><textarea name="r3" rows="2"></textarea></div>' +
+      '<input type="hidden" name="id" value="' + it.id + '">',
+      'swing.hitForm');
+  }
+  function openSell(it){
+    const rs = it.reasons || {};
+    const isCycle = it.pool === '另册周期';
+    openModal('卖出复盘 · ' + (it.name || it.ticker),
+      '<div class="card" style="margin-bottom:12px"><b>买入时理由（对照复盘，防情绪化）</b><ul class="swing-events">' +
+        '<li>' + (rs.r1 ? esc(rs.r1) : '<span class="muted">①（未记录）</span>') + '</li>' +
+        '<li>' + (rs.r2 ? esc(rs.r2) : '<span class="muted">②（未记录）</span>') + '</li>' +
+        '<li>' + (rs.r3 ? esc(rs.r3) : '<span class="muted">③（未记录）</span>') + '</li></ul></div>' +
+      '<div class="quick-row">' +
+        '<div class="field"><label>卖出类型（三分类）</label><select name="type">' +
+          '<option value="止损">止损（失效条件触发 → 无条件清仓，不讲故事）</option>' +
+          '<option value="止盈">止盈（价格到：估值回归中枢以上 / 减持区，分批规则化）</option>' +
+          (isCycle ? '<option value="周期离场">周期离场（价格锚转向，不看 PE）</option>' : '') +
+        '</select></div>' +
+      '</div>' +
+      '<div class="field"><label>卖出笔记（对照买入理由：逻辑变了还是价格到了？）</label><textarea name="note" rows="3"></textarea></div>' +
+      '<input type="hidden" name="id" value="' + it.id + '">',
+      'swing.sellForm');
+  }
+  function openReview(it){
+    const ri = ratingInfo(it);
+    const eh = effHub(it);
+    const et = effTrim(it, ri);
+    const sugZone = (ri && ri.tol && eh.hub != null)
+      ? '评级 ' + ri.grade + ' 建议买点：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' = ' + fmtN(eh.hub * ri.tol[0]) + ' – ' + fmtN(eh.hub * ri.tol[1]) + '（可直接填入下方新区间）。'
+      : (ri && ri.grade === 'D' ? '评级 D：禁入，建议撤单或降级处理。' : '');
+    const sugTrim = (et.trim != null && et.src !== 'manual')
+      ? '减持区参考：' + fmtN(et.trim) + '（' + trimTip(ri) + '）。'
+      : '';
+    openModal('复核 · ' + (it.name || it.ticker),
+      '<div class="hint" style="margin-bottom:10px">铁律①：每次财报披露后强制复核买点（中枢变了买点跟着变），锚定过期中枢 = 无效击球。可到「财报跟踪」核对最新披露数据。' +
+      (sugZone ? '<br>🏛 ' + esc(sugZone) : '') +
+      (sugTrim ? '<br>🎯 ' + esc(sugTrim) : '') + '</div>' +
+      '<div class="quick-row">' +
+        '<div class="field"><label>复核结论</label><select name="concl">' +
+          '<option value="维持">维持买点不变</option>' +
+          '<option value="调整">调整买点（下方填新区间）</option>' +
+          '<option value="失效">失效条件触发 → 撤单</option>' +
+        '</select></div>' +
+        '<div class="field" style="flex:none;width:170px"><label>下次复核日</label><input type="date" name="nextReview" value="' + esc(addMonths(it.nextReview || dateStr(), 3)) + '"></div>' +
+      '</div>' +
+      '<div class="quick-row">' +
+        fieldNum('buyLow', '新买点下沿（调整时填）', it.buyLow) +
+        fieldNum('buyHigh', '新买点上沿', it.buyHigh) +
+        fieldNum('hub', '新估值中枢', it.hub) +
+      '</div>' +
+      '<div class="field"><label>复核笔记（新信息 / 中枢变化原因）</label><textarea name="note" rows="2"></textarea></div>' +
+      '<input type="hidden" name="id" value="' + it.id + '">',
+      'swing.reviewForm');
+  }
+
+  /* ---------- 注册 ---------- */
+  Register.module({
+    view: 'swing',
+    nav: { ico:'⚾', label:'待击球', group:'投资追踪' },
+    seed: seed,
+    ensure: (db, sv) => {
+      const v = db.swing;
+      if(!Array.isArray(v.items)) v.items = sv.items;
+      // 账户总资金（组合仓位占比的分母），旧数据初始化为 0 = 未填
+      if(typeof v.capital !== 'number' || isNaN(v.capital)) v.capital = 0;
+      v.items.forEach(it => {
+        if(!Array.isArray(it.invalidConds)) it.invalidConds = [];
+        if(!Array.isArray(it.events)) it.events = [];
+        if(!it.reasons) it.reasons = { r1:'', r2:'', r3:'' };
+        if(!it.status || STATUSES.indexOf(it.status) < 0) it.status = '待击球';
+        if(!it.pool || POOLS.indexOf(it.pool) < 0) it.pool = '轮动';
+        it.ticker = normTicker(it.ticker);
+      });
+    },
+    render: renderSwing,
+    actions: {
+      'swing.add': () => openForm(null),
+      'swing.edit': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(it) openForm(it);
+      },
+      'swing.del': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(!it) return;
+        if(confirm('确认删除「' + (it.name || it.ticker) + '」？删除不进回收站，建议先「导出备份」留档。')){
+          DB.swing.items = DB.swing.items.filter(x => x.id !== it.id);
+          save(); render();
+        }
+      },
+      'swing.sort': el => {
+        const key = el.dataset.key;
+        if(state.swingSort === key) state.swingSortDir = state.swingSortDir === 'asc' ? 'desc' : 'asc';
+        else { state.swingSort = key; state.swingSortDir = key === 'gap' ? 'asc' : 'desc'; }
+        render();
+      },
+      'swing.fStatus': el => { state.swingStatus = state.swingStatus === el.dataset.v ? '全部' : el.dataset.v; render(); },
+      'swing.fPool': el => { state.swingPool = state.swingPool === el.dataset.v ? '全部' : el.dataset.v; render(); },
+      'swing.toggleRules': () => { state.swingRulesOpen = !state.swingRulesOpen; render(); },
+      'swing.toggleRow': el => { state.swingDetailId = state.swingDetailId === el.dataset.id ? null : el.dataset.id; render(); },
+      'swing.hit': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(!it) return;
+        if(it.status !== '待击球'){ toast('ℹ️ 仅「待击球」状态可击球'); return; }
+        openHit(it);
+      },
+      'swing.sell': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(!it) return;
+        if(it.status !== '持仓中'){ toast('ℹ️ 仅「持仓中」状态可卖出'); return; }
+        openSell(it);
+      },
+      'swing.review': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(it) openReview(it);
+      },
+      // 按评级重算买点区间：买点 = 中枢 × 评级宽容度（S 0.90–1.05 … C 0.60–0.80）
+      'swing.recalcRating': el => {
+        const it = DB.swing.items.find(x => x.id === el.dataset.id); if(!it) return;
+        const ri = ratingInfo(it);
+        if(!ri || !ri.tol){ toast('⚠️ 未评级或评级 D，无法按评级重算买点（先到估值详情完成评级）'); return; }
+        const eh = effHub(it);
+        if(eh.hub == null){ toast('⚠️ 缺少估值中枢：请在 ✎ 编辑里填写，或先到「公司估值」录入一次估值（可自动取）'); return; }
+        const lo = Math.round(eh.hub * ri.tol[0] * 100) / 100;
+        const hi = Math.round(eh.hub * ri.tol[1] * 100) / 100;
+        it.buyLow = lo; it.buyHigh = hi;
+        pushEvent(it, '买点按评级 ' + ri.grade + ' 重算：中枢 ' + fmtN(eh.hub) + (eh.src === 'auto' ? '（自动取最新估值）' : '') + ' ×' + ri.tol[0] + '–' + ri.tol[1] + ' → ' + fmtN(lo) + '–' + fmtN(hi));
+        save(); render();
+        toast('✅ 买点已按评级 ' + ri.grade + ' 重算：' + fmtN(lo) + ' – ' + fmtN(hi));
+      },
+      /* 台账 → 估值：未入估值的一键补齐（复用 earn.addVal 模式） */
+      'swing.addVal': el => {
+        const ticker = normTicker(el.dataset.ticker); if(!ticker) return;
+        if(findVal(ticker)){ toast('ℹ️ 已在估值关注列表'); return; }
+        DB.valuation.companies.push({
+          id: uid(), name: el.dataset.name || ticker, ticker, market: 'A股',
+          board: '', industry: '', companyType: '',
+          financials: [], valuations: [], investments: [], research: '',
+        });
+        save(); render();
+        toast('✅ 已加入估值跟踪，请到「公司估值」导入财务/行情 CSV');
+      },
+      'swing.openVal': el => {
+        const c = findVal(el.dataset.ticker);
+        if(!c){ toast('⚠️ 该公司尚未加入估值跟踪'); return; }
+        /* 统一详情页入口：跳转 #/company?v=…（modules/company.js） */
+        if(window.CompanyPage){ CompanyPage.open({ valId: c.id }, state.view); return; }
+        state.valCompanyId = c.id;
+        window.scrollTo(0, 0);
+        if(state.view === 'valuation'){ render(); }
+        else { location.hash = '#/valuation'; }
+      },
+      /* 估值 → 台账：公司详情页「🎯 加入待击球」 */
+      'swing.addFromVal': el => {
+        const ticker = normTicker(el.dataset.ticker); if(!ticker) return;
+        if(DB.swing.items.some(x => tickerKey(x.ticker) === tickerKey(ticker))){ toast('ℹ️ 已在待击球台账'); return; }
+        const it = mk({ ticker: ticker, name: el.dataset.name || ticker });
+        pushEvent(it, '自估值模块加入');
+        DB.swing.items.push(it);
+        save();
+        openForm(it);   // 直接打开编辑表单，补买点/失效条件
+      },
+      /* 估值 → 台账：公司详情页跳转到待击球并展开对应条目 */
+      'swing.openFromVal': el => {
+        const ticker = normTicker(el.dataset.ticker);
+        const it = DB.swing.items.find(x => tickerKey(x.ticker) === tickerKey(ticker));
+        if(!it){ toast('⚠️ 该公司在台账中未找到（可能已删除）'); return; }
+        state.swingStatus = '全部'; state.swingPool = '全部'; state.swingKw = '';
+        state.swingDetailId = it.id;
+        window.scrollTo(0, 0);
+        if(state.view === 'swing'){ render(); }
+        else { location.hash = '#/swing'; }
+      },
+    },
+    inputs: {
+      'swing.kw': (function(){
+        let t = 0;
+        return function(el){ state.swingKw = el.value; clearTimeout(t); t = setTimeout(function(){ renderKeep('swing.kw'); }, 120); };
+      })(),
+    },
+    changes: {
+      /* 账户总资金：blur / 回车 时落盘并重绘（用 change 而非 input —— number 输入框不支持 renderKeep 的光标恢复） */
+      'swing.capital': el => {
+        const v = parseFloat(el.value);
+        DB.swing.capital = (isNaN(v) || v < 0) ? 0 : v;
+        save(); render();
+      },
+    },
+    forms: {
+      /* 新增/编辑条目 */
+      'swing.form': fd => {
+        const id = fd.get('id');
+        const ticker = normTicker(fd.get('ticker'));
+        if(!ticker){ toast('⚠️ 代码必填'); return; }
+        const numOrNull = s => { const v = parseFloat(s); return isNaN(v) ? null : v; };
+        let it;
+        if(id){
+          it = DB.swing.items.find(x => x.id === id);
+          if(!it) return;
+          pushEvent(it, '编辑台账条目');
+        } else {
+          if(DB.swing.items.some(x => tickerKey(x.ticker) === tickerKey(ticker))){ toast('⚠️ 该代码已在台账中'); return; }
+          it = mk({ ticker: ticker });
+          pushEvent(it, '新建台账条目');
+          DB.swing.items.push(it);
+        }
+        it.name = String(fd.get('name') || '').trim() || it.name || ticker;
+        it.form = String(fd.get('form') || '').trim();
+        it.pool = POOLS.indexOf(fd.get('pool')) >= 0 ? fd.get('pool') : '轮动';
+        it.hub = numOrNull(fd.get('hub'));
+        it.buyLow = numOrNull(fd.get('buyLow'));
+        it.buyHigh = numOrNull(fd.get('buyHigh'));
+        it.trimZone = numOrNull(fd.get('trimZone'));
+        it.nextReview = String(fd.get('nextReview') || '') || null;
+        it.invalidConds = String(fd.get('invalidConds') || '').split('\n').map(s => s.trim()).filter(Boolean);
+        it.manualPrice = numOrNull(fd.get('manualPrice'));
+        it.cycleAnchor = String(fd.get('cycleAnchor') || '').trim();
+        it.note = String(fd.get('note') || '').trim();
+        save(); closeModal(); render();
+        toast('✅ 已保存「' + it.name + '」');
+      },
+      /* 击球：填理由三行 → 持仓中 */
+      'swing.hitForm': fd => {
+        const it = DB.swing.items.find(x => x.id === fd.get('id')); if(!it) return;
+        const riD = ratingInfo(it);
+        if(riD && riD.grade === 'D'){ toast('⛔ 评级 D：禁入，不允许击球（评级联动）'); return; }
+        const r1 = String(fd.get('r1') || '').trim();
+        if(!r1){ toast('⚠️ 买入理由① 必填'); return; }
+        it.reasons = { r1: r1, r2: String(fd.get('r2') || '').trim(), r3: String(fd.get('r3') || '').trim() };
+        const pi = priceInfo(it);
+        it.status = '持仓中';
+        pushEvent(it, '击球买入' + (pi ? '（现价 ' + pi.price + '）' : '') + '，理由已记录');
+        save(); closeModal(); render();
+        toast('🎯 已击球：' + it.name + ' → 持仓中');
+      },
+      /* 卖出：对照理由复盘 → 已止盈 / 失效撤单 */
+      'swing.sellForm': fd => {
+        const it = DB.swing.items.find(x => x.id === fd.get('id')); if(!it) return;
+        const type = String(fd.get('type') || '止盈');
+        const note = String(fd.get('note') || '').trim();
+        it.status = type === '止损' ? '失效撤单' : '已止盈';
+        pushEvent(it, '卖出 · ' + type + (note ? '：' + note : ''));
+        save(); closeModal(); render();
+        toast('已卖出（' + type + '）：' + it.name + ' → ' + it.status);
+      },
+      /* 复核：更新复核日 / 调整买点 / 触发失效 */
+      'swing.reviewForm': fd => {
+        const it = DB.swing.items.find(x => x.id === fd.get('id')); if(!it) return;
+        const numOrNull = s => { const v = parseFloat(s); return isNaN(v) ? null : v; };
+        const concl = String(fd.get('concl') || '维持');
+        const nextReview = String(fd.get('nextReview') || '') || it.nextReview;
+        const changes = [];
+        if(concl === '调整'){
+          const nLow = numOrNull(fd.get('buyLow')), nHigh = numOrNull(fd.get('buyHigh')), nHub = numOrNull(fd.get('hub'));
+          if(nLow !== it.buyLow || nHigh !== it.buyHigh || nHub !== it.hub){
+            it.buyLow = nLow; it.buyHigh = nHigh; it.hub = nHub;
+            changes.push('买点调整为 ' + (nLow != null && nHigh != null && nLow !== nHigh ? nLow + '–' + nHigh : (nHigh != null ? '≤' + nHigh : '—')) + (nHub != null ? '，中枢 ' + nHub : ''));
+          }
+        }
+        if(concl === '失效') it.status = '失效撤单';
+        it.nextReview = nextReview;
+        const note = String(fd.get('note') || '').trim();
+        pushEvent(it, '复核 · ' + concl + (changes.length ? '（' + changes.join('；') + '）' : '') + (note ? '：' + note : ''));
+        save(); closeModal(); render();
+        toast('✅ 已复核「' + it.name + '」' + (concl === '失效' ? '，已撤单' : ''));
+      },
+    },
+  });
+
+  /* 供估值模块调用：按代码查台账（已入台账则估值详情页不显示「加入待击球」按钮） */
+  window.SwingLink = {
+    findByTicker: t => DB.swing.items.find(x => normTicker(x.ticker) === normTicker(t) || (tickerKey(x.ticker) && tickerKey(x.ticker) === tickerKey(t))) || null,
+
+    /* 由估值模块「触发线」调用：把 买点区间 / 中枢 / 减持区 / 失效条件 写入台账。
+     * 台账已有该代码 → 原地更新（不改变其状态，避免覆盖「持仓中」）；
+     * 台账没有 → 新建为「待击球」。plan 中为 null/NaN 的字段不覆盖已有值。
+     * plan = { buyLow, buyHigh, hub, trimZone, invalidConds: [] }
+     * 返回 { ok, isNew, name, status } 供调用方提示。
+     */
+    applyPlan: function(ticker, name, plan){
+      const t = normTicker(ticker);
+      if(!t) return { ok:false, msg:'缺少股票代码' };
+      const p = plan || {};
+      let it = DB.swing.items.find(x => tickerKey(x.ticker) === tickerKey(t));
+      const isNew = !it;
+      if(isNew){ it = mk({ ticker: t, name: name || t }); DB.swing.items.push(it); }
+      if(name && !it.name) it.name = name;
+      const before = { buyLow: it.buyLow, buyHigh: it.buyHigh, hub: it.hub, trimZone: it.trimZone };
+      ['buyLow', 'buyHigh', 'hub', 'trimZone'].forEach(k => {
+        const v = p[k];
+        if(v != null && v !== '' && !isNaN(v)) it[k] = Number(v);
+      });
+      if(Array.isArray(p.invalidConds) && p.invalidConds.length) it.invalidConds = p.invalidConds.slice();
+      it.nextReview = addMonths(dateStr(), 3);   // 铁律①：3 个月后强制复核买点
+      const changed = ['buyLow', 'buyHigh', 'hub', 'trimZone'].filter(k => before[k] !== it[k]);
+      const f2 = v => (v == null || isNaN(v)) ? '—' : String(parseFloat(Number(v).toFixed(2)));
+      pushEvent(it, (isNew ? '由估值触发线建立' : '由估值触发线更新') +
+        '（买点 ' + fmtBuy(it) + ' · 中枢 ' + f2(it.hub) + ' · 减持区 ' + f2(it.trimZone) +
+        (changed.length ? ' · 更新 ' + changed.length + ' 项' : '') + '）');
+      it.updatedAt = dateStr();
+      return { ok:true, isNew: isNew, name: it.name, status: it.status };
+    },
+  };
+})();

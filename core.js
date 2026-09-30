@@ -12,6 +12,26 @@
  * 模块约定：modules/*.js 通过 IIFE 调用 window.Register.module({...})
  * ===================================================================== */
 
+/* ================= 应用命名空间（拆分入口用） =================
+ * goal 与 invest 两个独立入口共享同一份 core.js；各入口在引入 core.js 之前
+ * 用 window.GT_APP 注入自己的库名 / 存储键 / 导出文件名 / 默认视图，
+ * 实现数据存储与备份文件的完全隔离。未注入时使用默认值（goal 目标入口）。
+ * 主题偏好 THEME_KEY 固定共享，保证两个入口深色模式一致。
+ */
+const GT_APP_DEFAULT = {
+  ns: 'goalTracker',        // localStorage 键 / 导出时间戳前缀
+  db: 'goalTrackerDB',      // IndexedDB 库名
+  file: 'goal-tracker-data.json',  // 导出 / 同步盘文件名
+  def: 'dashboard',         // 默认视图
+  self: 'index.html',       // 本入口文件
+  peer: 'invest.html',      // 对端入口文件
+  peerLabel: '投资研究',      // 对端入口按钮文案
+  peerIco: '📈',
+  navTitle: 'GoalTracker',              // 子视图标题后缀
+  docTitle: 'GoalTracker · 目标追踪',    // 无视图时的标题
+};
+const APP = Object.assign({}, GT_APP_DEFAULT, window.GT_APP || {});
+
 /* ================= 工具函数 ================= */
 const $ = s => document.querySelector(s);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -23,6 +43,122 @@ const todayIdx = () => (new Date().getDay() + 6) % 7; // 周一=0
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtCN(dstr){ const d = dstr ? new Date(dstr + 'T00:00:00') : new Date();
   return d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日 ' + WEEK_CN[d.getDay()]; }
+
+/* ================= 拼音模糊搜索 =================
+ * 依赖 lib/pinyin-pro.js（UMD 构建 → window.pinyinPro，index.html 引入）。
+ * 库未加载成功（如离线旧缓存）时自动退化为原文匹配，不影响使用。
+ * kwMatch(text, kw)：汉字原文包含 / 汉字全拼包含 / 拼音首字母包含，均不区分大小写。
+ * 例：「汉」可被 han / h 匹配，「长城汽车」可被 changcheng 或 ccqc 匹配。
+ */
+const KW_PY_CACHE = new Map();   // 文本 → [全拼, 首字母串]（小写），缓存避免每次输入重复转换
+function pinyinPair(text){
+  let pair = KW_PY_CACHE.get(text);
+  if(!pair){
+    let py = '', abbr = '';
+    if(window.pinyinPro && /[\u4e00-\u9fa5]/.test(text)){
+      try{
+        py = window.pinyinPro.pinyin(text, { toneType:'none', type:'array', nonZh:'consecutive' }).join('').toLowerCase();
+        abbr = window.pinyinPro.pinyin(text, { pattern:'first', toneType:'none', type:'array', nonZh:'consecutive' }).join('').toLowerCase();
+      }catch(err){ /* 库异常时退化为原文匹配 */ }
+    }
+    pair = [py, abbr];
+    KW_PY_CACHE.set(text, pair);
+  }
+  return pair;
+}
+function kwMatch(text, kw){
+  if(!kw) return true;
+  const t = String(text == null ? '' : text).toLowerCase();
+  if(t.includes(kw)) return true;
+  const py = pinyinPair(t);
+  return (py[0] && py[0].includes(kw)) || (py[1] && py[1].includes(kw));
+}
+
+/* ================= 申万行业路径（各模块公司列表统一的行业展示） =================
+ * 数据源（L0 静态公司字典优先，industryMap 兜底）：
+ *   1. L0：data/stocks.json（scripts/ops/build_stocks.py 生成，全 A 股 ~5500 家静态信息：
+ *      code/name/mkt/bd/em/sw1/sw2/sw3/concepts），启动后异步懒加载，缓存于 STOCKS；
+ *   2. 兜底：DB.industryMap.rows（旧「导入分类地图」，仅覆盖已收录公司）。
+ * 两者行键名完全一致，swPath / swMapIdx / Repo 无感切换。加载完成后自动重绘一次。
+ * swPath(code, fb) → 「一级 / 二级 / 三级」；下级是「上级 + 罗马数字」的重复命名
+ * （如 银行 → 银行Ⅱ）自动并掉，避免路径拖长；swRest 为去掉一级后的剩余层级。
+ */
+const STOCKS = { rows: null, meta: null, loading: false };
+// L0 字典行（未加载 / 加载失败 → null，调用方回退 industryMap）
+function stocksRows(){
+  return (STOCKS.rows && STOCKS.rows.length) ? STOCKS.rows : null;
+}
+// 启动后异步加载 L0 字典：不阻塞启动；完成后重绘当前视图让全量数据生效
+async function loadStocks(){
+  if(STOCKS.rows || STOCKS.loading) return;
+  STOCKS.loading = true;
+  try {
+    const res = await fetch('data/stocks.json?t=' + Date.now());
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    if(j && Array.isArray(j.stocks) && j.stocks.length){
+      STOCKS.rows = j.stocks;
+      STOCKS.meta = j.meta || null;
+      // datahub 模块手动导入过更新版本的 stocks.json 时以缓存为准（防磁盘旧版降级）；
+      // 返回 true 表示已用缓存覆盖，由其触发重绘
+      let overridden = false;
+      try {
+        if(window.DataHub && typeof window.DataHub.onStocksLoaded === 'function')
+          overridden = !!window.DataHub.onStocksLoaded();
+      } catch(_e){}
+      // L0 就绪后重绘一次（若页面已渲染）；findInd/渲染内部异常不向上冒泡
+      if(appReady && !overridden) { try { render(); } catch(e){} }
+    }
+  } catch(e) {
+    // 404 / 离线 / file://：静默降级——先回退 datahub 手动导入的缓存，再不行用 industryMap 兜底
+    try {
+      if(window.DataHub && typeof window.DataHub.onStocksFailed === 'function' &&
+         window.DataHub.onStocksFailed() && appReady){
+        try { render(); } catch(_e){}
+      }
+    } catch(_e){}
+  }
+  STOCKS.loading = false;
+}
+function swMapIdx(db){
+  db = db || DB;
+  // L0 优先，兜底旧分类地图；rows 引用未变则复用缓存（整体替换后自动失效）
+  const rows = stocksRows() ||
+    (db && db.industryMap && Array.isArray(db.industryMap.rows) ? db.industryMap.rows : null);
+  if(!rows) return {};                             // 尚未加载：空结果（无需缓存，开销为零）
+  if(swMapIdx.rows === rows) return swMapIdx.m;    // rows 引用未变则复用缓存，重新导入（整体替换）后自动失效
+  const m = {};
+  rows.forEach(r => {
+    const c6 = (String(r.code || '').match(/(\d{6})/) || [])[1];
+    if(c6) m[c6] = r;
+  });
+  swMapIdx.m = m;
+  swMapIdx.rows = rows;
+  return m;
+}
+// 下级与上级重复：同名，或仅差罗马数字后缀（银行 / 银行Ⅱ）
+function swLvDup(child, parent){
+  if(!child || !parent) return false;
+  if(child === parent) return true;
+  if(!child.startsWith(parent)) return false;
+  return /^[ⅠⅡⅢ]*$/.test(child.slice(parent.length));
+}
+function swPath(code, fb){
+  fb = fb || {};
+  const c6 = (String(code || '').match(/(\d{6})/) || [])[1] || '';
+  const mr = c6 ? swMapIdx()[c6] : null;
+  const l1 = String((mr && mr.sw1) || fb.industry || fb['行业'] || '').trim();
+  const l2 = String((mr && mr.sw2) || fb.industryL2 || fb['行业二级'] || '').trim();
+  const l3 = String((mr && mr.sw3) || fb.industryL3 || fb['行业三级'] || '').trim();
+  const parts = [];
+  if(l1) parts.push(l1);
+  if(l2 && !swLvDup(l2, l1) && !parts.includes(l2)) parts.push(l2);
+  if(l3 && !parts.includes(l3) && !swLvDup(l3, parts[parts.length - 1])) parts.push(l3);
+  return parts.join(' / ');
+}
+function swRest(code, fb){
+  return swPath(code, fb).split(' / ').slice(1).join(' / ');
+}
 
 /* ================= 深色模式 =================
  * 主题由 index.html 的内联脚本在首帧前应用（防闪白），
@@ -121,8 +257,15 @@ const FORMS = {};
 
 function registerModule(def){
   if(!def || !def.view) throw new Error('module 缺少 view');
+  const prev = MODULES[def.view];
+  if(prev){
+    // 已注册过（懒加载：真模块替换占位模块）→ 原位替换，保持 MODULE_ORDER 侧边栏顺序不变
+    const i = MODULE_ORDER.indexOf(prev);
+    if(i >= 0) MODULE_ORDER[i] = def;
+  } else {
+    MODULE_ORDER.push(def);
+  }
   MODULES[def.view] = def;
-  MODULE_ORDER.push(def);
   Object.assign(ACTIONS, def.actions || {});
   Object.assign(CHANGES, def.changes || {});
   Object.assign(INPUTS,  def.inputs  || {});
@@ -130,7 +273,7 @@ function registerModule(def){
 }
 
 /* ================= 数据 ================= */
-const LS_KEY = 'goalTracker.v1';
+const LS_KEY = APP.ns + '.v1';
 function seed(){
   const s = {};
   MODULE_ORDER.forEach(m => { if(m.seed) s[m.view] = m.seed(); });
@@ -144,7 +287,11 @@ function ensure(db){
     if(!m.seed) return;
     const sv = s[m.view];
     if(!db[m.view]) db[m.view] = sv;
-    if(m.ensure) m.ensure(db, sv);
+    // 单模块迁移失败只跳过该模块并在控制台报错；
+    // 绝不能让异常向上冒泡——loadAsync 里 ensure 失败会一路回退到 seed()，
+    // 之后任何一次 save() 都会用种子数据覆盖 IndexedDB，等于清空用户全部数据。
+    try { if(m.ensure) m.ensure(db, sv); }
+    catch(e){ console.error('数据迁移异常(' + m.view + '):', e); }
   });
   db.meta = db.meta || {};
   if(!db.meta.schemaVersion) db.meta.schemaVersion = SCHEMA_VERSION;
@@ -159,7 +306,7 @@ function hasRequiredModules(d){
 }
 
 /* ================= 数据存储（IndexedDB 为主，localStorage 兜底） ================= */
-function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open('goalTrackerDB', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open(APP.db, 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function idbSet(k, v){ const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
 async function idbGet(k){ const db = await idbOpen(); return new Promise((res, rej) => { const rq = db.transaction('kv').objectStore('kv').get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
 
@@ -174,8 +321,8 @@ async function loadAsync(){
   } catch(e){ console.warn('IndexedDB 读取失败:', e); }
 
   // 2. 尝试 fetch 同目录 JSON（首次使用 / 新设备）
-  //    优先读应用根目录 goal-tracker-data.json，其次读 data/ 子目录（scripts 脚本实际写入的位置）
-  for(const p of ['./goal-tracker-data.json', './data/goal-tracker-data.json']){
+  //    优先读应用根目录（如 goal-tracker-data.json / invest-data.json），其次读 data/ 子目录（scripts 脚本实际写入的位置）
+  for(const p of ['./' + APP.file, './data/' + APP.file]){
     try {
       const resp = await fetch(p + '?t=' + Date.now());
       if(resp.ok){
@@ -232,8 +379,8 @@ document.addEventListener('visibilitychange', () => { if(document.visibilityStat
  * 策略：记录"上次导出时间"，超过 EXPORT_REMIND_DAYS 天未导出且有过改动时，显示橙色提醒。
  */
 const EXPORT_REMIND_DAYS = 3;
-const LAST_EXPORT_KEY = 'goalTracker.lastExport';
-const EXPORT_FILENAME = 'goal-tracker-data.json'; // 固定文件名，方便直接覆盖同步盘中的原 JSON
+const LAST_EXPORT_KEY = APP.ns + '.lastExport';
+const EXPORT_FILENAME = APP.file; // 固定文件名，方便直接覆盖同步盘中的原 JSON
 function lastExportTs(){ return parseInt(localStorage.getItem(LAST_EXPORT_KEY) || '0', 10) || 0; }
 function sinceLastExport(){ // 返回距上次导出的毫秒数；从未导出返回 null
   const ts = lastExportTs();
@@ -274,10 +421,144 @@ function refreshBackupReminder(){
   }
 }
 
+/* ================= 同步盘数据检测（goal-tracker-data.json） =================
+ * 背景：数据主存是浏览器 IndexedDB，磁盘上的 JSON 只在两种情况下被读入——
+ *   ① 本机 IndexedDB 为空（首次使用 / 换设备）；② 用户手动「⬆ 导入数据」。
+ * 于是「别处导出了更新版本到同步盘」这种情况，本机不会自动感知。
+ *
+ * 这里在首屏渲染完成后做一次静默比对，判断依据是 JSON 内部的 meta.updated（不是文件时间）：
+ *   · HEAD 先探 Last-Modified：已不可能更新时连下载都省掉（JSON 有几 MB）；
+ *   · 只有真正更新时才浮出提示条，由用户决定是否加载；
+ *   · 绝不自动覆盖——自动覆盖会丢掉本机尚未导出的改动；
+ *   · 忽略过某一版后，该版本不再打扰（按远端 meta.updated 记名）。
+ */
+const REMOTE_PATHS = ['./' + APP.file, './data/' + APP.file];
+const REMOTE_DISMISS_KEY = APP.ns + '.remoteDismissed';
+const REMOTE_CHECK_KEY = APP.ns + '.remoteCheckedAt';
+const REMOTE_MIN_GAP_MS = 30000;            // 远端需比本机新 30s 以上才算「有更新」（刚导出时两边几乎同时）
+const REMOTE_RECHECK_MS = 20 * 60 * 1000;   // 同一浏览器 20 分钟内不重复自动比对
+
+let remoteCandidate = null; // { path, data, updated, count, localCount, localUpdated }
+
+function remoteTs(db){
+  const t = db && db.meta && db.meta.updated;
+  const v = t ? Date.parse(t) : NaN;
+  return isNaN(v) ? 0 : v;
+}
+function dataItemCount(db){
+  // 粗略条目数：各模块下的数组长度合计。仅用于让用户直观比较「哪边数据更多」，
+  // 不参与任何判定（判定只看 meta.updated）。
+  let n = 0;
+  (MODULE_ORDER || []).forEach(m => {
+    const d = db && db[m.view];
+    if(!d) return;
+    if(Array.isArray(d)) n += d.length;
+    else if(typeof d === 'object') Object.keys(d).forEach(k => { if(Array.isArray(d[k])) n += d[k].length; });
+  });
+  return n;
+}
+function fmtRemoteTime(ms){
+  if(!ms) return '无时间戳';
+  const d = new Date(ms);
+  return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+async function probeRemote(path){
+  // 只取响应头，不下载正文：拿 Last-Modified 做「值不值得下载」的粗判
+  try{
+    const resp = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+    if(!resp || !resp.ok) return null;
+    const lm = Date.parse(resp.headers.get('last-modified') || '');
+    const len = parseInt(resp.headers.get('content-length') || '', 10);
+    return { path, lm: isNaN(lm) ? 0 : lm, size: isNaN(len) ? 0 : len };
+  }catch(e){ return null; }
+}
+async function fetchRemoteData(path){
+  try{
+    const resp = await fetch(path + '?t=' + Date.now(), { cache: 'no-store' });
+    if(!resp || !resp.ok) return null;
+    const d = await resp.json();
+    return hasRequiredModules(d) ? d : null;
+  }catch(e){ return null; }
+}
+async function checkRemoteData(manual){
+  if(!appReady || !DB) return;
+  if(!manual){
+    const last = parseInt(localStorage.getItem(REMOTE_CHECK_KEY) || '0', 10) || 0;
+    if(Date.now() - last < REMOTE_RECHECK_MS) return;
+  }
+  try { localStorage.setItem(REMOTE_CHECK_KEY, String(Date.now())); } catch(e){}
+
+  // ① HEAD 探测候选文件（file:// 打开时 fetch 直接失败，下面会静默退出）
+  const probed = [];
+  for(const p of REMOTE_PATHS){
+    const r = await probeRemote(p);
+    if(r) probed.push(r);
+  }
+  const localTs = remoteTs(DB);
+  // 已知修改时间的按新→旧排序；时间未知的排最后（仍给手动检查一次机会）
+  let queue = (probed.length ? probed.slice() : [{ path: REMOTE_PATHS[0], lm: 0 }])
+    .sort((a, b) => (b.lm || 0) - (a.lm || 0));
+  if(!manual){
+    // 自动模式：只在有更新迹象（或完全探不到时间）时下载，且最多下载一个候选
+    queue = queue.filter(c => !c.lm || c.lm - localTs > REMOTE_MIN_GAP_MS).slice(0, 1);
+  }
+
+  // ② 按序下载并比对 JSON 内部的 meta.updated（唯一可信依据）
+  let found = null, tried = [];
+  for(const cand of queue){
+    tried.push(cand.path);
+    const d = await fetchRemoteData(cand.path);
+    if(!d) continue;
+    const rTs = remoteTs(d);
+    found = { path: cand.path, data: d, updated: rTs };
+    if(rTs - localTs > REMOTE_MIN_GAP_MS) break;  // 找到更新的即可停止
+    if(!manual || tried.length >= 2) break;
+  }
+
+  if(!found){
+    remoteCandidate = null; renderRemoteBar();
+    if(manual) toast('同步盘没有可用的 ' + APP.file + '（文件不存在 / 格式不符 / 直接用 file:// 打开页面）');
+    return;
+  }
+  if(found.updated - localTs <= REMOTE_MIN_GAP_MS){
+    remoteCandidate = null; renderRemoteBar();
+    if(manual) toast('✅ 本机数据不比同步盘旧（同步盘：' + fmtRemoteTime(found.updated) + '）');
+    return;
+  }
+  if(!manual && String(found.updated) === (localStorage.getItem(REMOTE_DISMISS_KEY) || '')){
+    return; // 这一版已被忽略，安静跳过
+  }
+  remoteCandidate = {
+    path: found.path, data: found.data, updated: found.updated,
+    count: dataItemCount(found.data), localCount: dataItemCount(DB), localUpdated: localTs,
+  };
+  renderRemoteBar();
+  if(manual) toast('发现同步盘有更新的数据');
+}
+function renderRemoteBar(){
+  const bar = document.getElementById('remote-bar');
+  if(!bar) return;
+  const r = remoteCandidate;
+  if(!r){ bar.hidden = true; bar.innerHTML = ''; return; }
+  const diff = r.count - r.localCount;
+  const diffTxt = diff > 0 ? '多 ' + diff + ' 条' : (diff < 0 ? '少 ' + (-diff) + ' 条' : '条数相同');
+  bar.innerHTML =
+    '<div class="rb-head"><b>🔄 同步盘有更新的数据</b>' +
+    '<button class="icon-btn" data-action="data.remoteDismiss" title="本次忽略（该版本不再提示）">✕</button></div>' +
+    '<div class="rb-row"><span>同步盘</span><b>' + esc(fmtRemoteTime(r.updated)) + '</b>' +
+    '<span class="muted">' + r.count + ' 条 · ' + esc(String(r.path).replace('./', '')) + '</span></div>' +
+    '<div class="rb-row"><span>本机</span><b>' + esc(fmtRemoteTime(r.localUpdated)) + '</b>' +
+    '<span class="muted">' + r.localCount + ' 条（' + diffTxt + '）</span></div>' +
+    '<div class="rb-note">加载会用同步盘覆盖本机数据，本机尚未导出的改动会丢失——建议先导出本机备份。</div>' +
+    '<div class="rb-foot"><button class="btn ghost sm" data-action="data.remoteBackup">先导出本机备份</button>' +
+    '<button class="btn primary sm" data-action="data.remoteLoad">加载同步盘数据</button></div>';
+  bar.hidden = false;
+}
+
 /* ================= 全局状态 =================
  * 约定：模块的状态键使用「模块前缀.子键」命名（如 job.tag），避免键名冲突。
  */
-const state = { view:'dashboard', jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valIndustry:'全部', valLynchType:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null, earnSort:'披露日期', earnSortDir:'desc', earnFilterLow:true, earnIndustries:[], earnBoard:'全部' };
+const state = { view: APP.def, jobTopicCat:'全部', jobTargetStatus:'全部', jobDeepOpen:null, reviewOpen:null, readBook:'全部', readTheme:'全部', readQ:'', sideStatus:'全部', valBoard:'全部', valIndustry:'全部', valLynchType:'全部', valCompanyId:null, valFinSort:'desc', macroRange:'5y', thOpen:null, earnSort:'营业收入', earnSortDir:'desc', earnFilterLow:false, earnIndustries:[], earnBoard:'全部' };
 
 /* ================= 通用渲染片段（组件） ================= */
 function ring(pct, color, size){
@@ -313,7 +594,9 @@ function addForm(form, ph, btnText){
 /* ================= 弹窗 ================= */
 const modalRoot = $('#modal-root');
 function openModal(title, bodyHtml, formName, onMounted, readOnly){
-  modalRoot.innerHTML = '<div class="modal-mask" data-action="modal.cancel"><div class="modal">' +
+  // 弹窗仅能通过右上角 ✕ 或底部「取消/关闭」按钮关闭：遮罩层不绑定 data-action，
+  // 避免误点弹窗外空白区域导致已填写内容被清空
+  modalRoot.innerHTML = '<div class="modal-mask"><div class="modal">' +
     '<div class="modal-head"><h3>' + title + '</h3><button class="icon-btn" data-action="modal.cancel">✕</button></div>' +
     '<form class="modal-body" data-form="' + (formName || '') + '">' + bodyHtml +
     '<div class="modal-foot"><button type="button" class="btn ghost" data-action="modal.cancel">' + (readOnly ? '关闭' : '取消') + '</button>' +
@@ -371,6 +654,31 @@ Object.assign(ACTIONS, {
     markExported();
   },
   'data.import': () => $('#import-file').click(),
+  // 手动比对同步盘（自动比对受 20 分钟节流，且只在启动时跑一次；这里随时可用）
+  'data.remoteCheck': () => checkRemoteData(true),
+  'data.remoteDismiss': () => {
+    if(remoteCandidate){
+      // 记住远端版本号：同一版本不再自动提示（换设备或再次导出后版本变化，会重新提示）
+      try { localStorage.setItem(REMOTE_DISMISS_KEY, String(remoteCandidate.updated)); } catch(e){}
+    }
+    remoteCandidate = null; renderRemoteBar();
+  },
+  'data.remoteBackup': () => ACTIONS['data.export'](),
+  'data.remoteLoad': async () => {
+    const r = remoteCandidate; if(!r) return;
+    if(!confirm('用同步盘的数据覆盖本机？\n\n' +
+      '同步盘：' + fmtRemoteTime(r.updated) + '（' + r.count + ' 条）\n' +
+      '本机：'   + fmtRemoteTime(r.localUpdated) + '（' + r.localCount + ' 条）\n\n' +
+      '本机尚未导出的改动会丢失，且无法撤销。确定继续？')) return;
+    DB = ensure(r.data);
+    appReady = true;
+    try { await idbSet('data', DB); } catch(e){ console.error('IndexedDB 写入失败:', e); }
+    // 本机已与磁盘对齐，重置导出提醒时间（否则刚加载完就被提示「久未导出」）
+    try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch(e){}
+    remoteCandidate = null;
+    renderRemoteBar(); render(); updateSyncUI();
+    toast('✅ 已加载同步盘数据（' + r.count + ' 条）');
+  },
 });
 
 /* ================= hash 路由 =================
@@ -383,7 +691,7 @@ function viewFromHash(){
 }
 window.addEventListener('hashchange', () => {
   // hash 为空（如从 #/fitness 后退回初始页）时回落到总览
-  const v = viewFromHash() || 'dashboard';
+  const v = viewFromHash() || APP.def;
   if(v !== state.view){ state.view = v; render(); }
 });
 
@@ -391,7 +699,6 @@ window.addEventListener('hashchange', () => {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if(!el) return;
-  if(el.classList.contains('modal-mask') && e.target.closest('.modal')) return;
   const fn = ACTIONS[el.dataset.action];
   if(fn){ e.preventDefault(); fn(el, e); }
 });
@@ -402,7 +709,17 @@ document.addEventListener('change', e => {
   if(fn) fn(el);
 });
 document.addEventListener('input', e => {
+  // 中文输入法组词期间（拼音候选未上屏，e.isComposing = true）不触发过滤，
+  // 否则每次按键重渲染会打断 IME 组合会话，导致拼音字母残留堆积（如输入 han 变成 hhhaaannn）
+  if(e.isComposing) return;
   const el = e.target.closest('[data-input]');
+  if(!el) return;
+  const fn = INPUTS[el.dataset.input];
+  if(fn) fn(el);
+});
+// 输入法组词结束（选字上屏 / Esc 取消后确认）时统一触发一次过滤
+document.addEventListener('compositionend', e => {
+  const el = e.target.closest && e.target.closest('[data-input]');
   if(!el) return;
   const fn = INPUTS[el.dataset.input];
   if(fn) fn(el);
@@ -414,7 +731,6 @@ document.addEventListener('submit', e => {
   const fn = FORMS[form.dataset.form];
   if(fn) fn(new FormData(form), form);
 });
-document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 $('#import-file').addEventListener('change', e => {
   const file = e.target.files[0]; if(!file) return;
   const reader = new FileReader();
@@ -422,8 +738,8 @@ $('#import-file').addEventListener('change', e => {
     try{
       const d = JSON.parse(reader.result);
       if(hasRequiredModules(d)){ DB = ensure(d); save(); render(); toast('✅ 导入成功，已覆盖当前数据'); }
-      else alert('文件格式不正确。\n\n请导入本应用导出的完整数据备份「goal-tracker-data.json」（含所有模块数据）。\n不要选财务/盈利预测/宏观的 CSV，那需要到对应模块里分别导入。');
-    }catch(err){ alert('导入失败：' + err.message + '\n\n请选择「goal-tracker-data.json」格式的 JSON 数据文件。'); }
+      else alert('文件格式不正确。\n\n请导入本应用导出的完整数据备份「' + APP.file + '」（含所有模块数据）。\n不要选财务/盈利预测/宏观的 CSV，那需要到对应模块里分别导入。');
+    }catch(err){ alert('导入失败：' + err.message + '\n\n请选择「' + APP.file + '」格式的 JSON 数据文件。'); }
     e.target.value = '';
   };
   reader.readAsText(file);
@@ -476,7 +792,7 @@ function render(){
   else { main.innerHTML = '<div class="empty">未找到视图：' + esc(state.view) + '</div>'; }
 
   // 标签页标题随视图切换；视图切换时加渐入动画
-  document.title = (mod && mod.nav) ? mod.nav.label + ' · GoalTracker' : 'GoalTracker · 目标追踪';
+  document.title = (mod && mod.nav) ? mod.nav.label + ' · ' + APP.navTitle : APP.docTitle;
   if(viewChanged){
     main.classList.remove('view-enter');
     void main.offsetWidth; // 强制 reflow，确保连续切换时动画能重新触发
@@ -531,6 +847,10 @@ async function initApp(){
   renderNav();
   render();
   updateSyncUI();
+  // 首屏渲染后再异步补 L0 静态字典（~2MB，网络优先 + SW 缓存兜底；不阻塞启动）
+  setTimeout(() => { loadStocks(); }, 300);
+  // 静默比对同步盘 JSON（不阻塞启动；失败一律静默）
+  setTimeout(() => { checkRemoteData(false); }, 800);
 }
 
 /* 暴露给模块 / 外部 */

@@ -1,0 +1,65 @@
+# 数据管道：GitHub Actions 定时拉取行情/财报 → 重建 manifest → 自动提交 data/
+#
+# 背景：此前数据更新依赖本机手动跑 scripts/fetch_*.py。接入 CI 后：
+#   - 每个工作日北京时间 16:00（A 股收盘后）自动拉取最新行情与财报跟踪数据；
+#   - 重建 data/manifest.json，前端（投资总览页）据此提示「行情 X 天未更新」；
+#   - 有变化才提交，无变化自动跳过；前端部署在 GitHub Pages 等静态托管时，
+#     push 后页面数据随之更新，彻底摆脱手动跑脚本。
+#
+# 范围说明：CI 只跑轻量可靠的 fetch_prices / fetch_earnings（依赖仅 requests）。
+# 财务/盈利预测等按公司逐家拉取的脚本（fetch_financial / fetch_profit_forecast）
+# 与依赖 akshare 的宏观脚本耗时较长且易受数据源限制，仍建议本机手动执行；
+# 需要时可在下方 steps 中仿照添加。
+
+name: update-data
+
+on:
+  workflow_dispatch: {}          # 支持在 Actions 页手动触发
+  schedule:
+    - cron: '0 8 * * 1-5'        # UTC 8:00 = 北京时间 16:00（周一至周五，A 股收盘后）
+
+permissions:
+  contents: write                # 允许推送提交到当前分支
+
+concurrency:
+  group: update-data
+  cancel-in-progress: true       # 上一次还没跑完时，取消旧任务避免并发提交冲突
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      # 拉取失败不阻断后续步骤（如限流）：谁成功提交谁的数据，manifest 始终重建
+      - name: 拉取行情（当前股价）
+        run: python scripts/fetch_prices.py
+        continue-on-error: true
+
+      - name: 拉取财报跟踪
+        run: python scripts/fetch_earnings.py
+        continue-on-error: true
+
+      - name: 重建数据清单 manifest
+        run: python scripts/ops/build_manifest.py
+
+      - name: 提交数据更新
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore(data): auto update $(date -u +%Y-%m-%d)"
+            git push
+          fi

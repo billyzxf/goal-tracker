@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoalTracker · 投资研究</title>
+<meta name="description" content="投资研究独立应用：待击球台账、公司估值、财报跟踪、行业研究、宏观经济，独立数据文件 invest-data.json，本地存储、离线可用。">
+<meta name="theme-color" content="#0ea97b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GoalTracker 投资研究">
+<link rel="manifest" href="manifest.json" id="manifest-link">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<!-- 主题需在首帧前应用，避免深色用户看到闪白（与目标入口共享同一偏好键，深色一致） -->
+<script>
+(function(){
+  try{
+    var t = localStorage.getItem('goalTracker.theme');
+    var dark = t ? t === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if(dark){
+      document.documentElement.classList.add('dark');
+      var m = document.querySelector('meta[name="theme-color"]');
+      if(m) m.setAttribute('content', '#0d1117');
+    }
+    // file:// 下浏览器会因 CORS 拒绝抓取 manifest 并反复报错；PWA 能力本就只在 http(s) 下可用，直接摘掉
+    if(location.protocol === 'file:'){
+      var ml = document.getElementById('manifest-link');
+      if(ml) ml.parentNode.removeChild(ml);
+    }
+  }catch(e){}
+})();
+</script>
+<!-- KaTeX 已改为按需懒加载：仅当页面出现公式时才动态引入，加快首屏加载 -->
+</head>
+<body>
+<!-- 移动端顶栏（<720px 显示） -->
+<div class="mobile-topbar">
+  <button class="hamburger" id="m-menu" aria-label="打开菜单">☰</button>
+  <div class="m-brand"><div class="brand-logo">📈</div><div class="m-title">投资研究</div></div>
+</div>
+<div class="mobile-backdrop" id="m-backdrop"></div>
+<aside id="sidebar">
+  <div class="brand">
+    <div class="brand-logo">📈</div>
+    <div><div class="brand-name">投资研究</div><div class="brand-sub">INVEST</div></div>
+  </div>
+  <nav id="nav"></nav>
+  <div class="side-foot">
+    <div id="sync-box"></div>
+    <button class="btn ghost sm" onclick="location.href='index.html'" title="切换到目标追踪应用（减脂/求职/阅读/副业等）">🎯 目标追踪 →</button>
+    <button class="btn ghost sm" data-action="theme.toggle" title="切换深色 / 浅色主题">🌙 深色模式</button>
+    <button class="btn ghost sm" data-action="data.export" title="导出完整数据备份：invest-data.json（含全部投资模块数据，用于换设备/同步盘）">⬇ 导出备份</button>
+    <button class="btn ghost sm" data-action="data.import" title="导入数据：invest-data.json（会用导入内容覆盖当前数据，建议先导出备份）">⬆ 导入数据</button>
+    <button class="btn ghost sm" data-action="data.remoteCheck" title="比对同步盘里的 invest-data.json 与浏览器内的数据，若磁盘更新可一键加载">🔄 检查同步盘</button>
+    <div class="side-note">数据文件名：invest-data.json<br>IndexedDB 本地存储 · 导出 JSON 同步</div>
+  </div>
+</aside>
+<main id="main"></main>
+<!-- 同步盘更新提示条（core.js 的 checkRemoteData 填充；初始 hidden） -->
+<div id="remote-bar" class="remote-bar" hidden></div>
+<div id="modal-root"></div>
+<input type="file" id="import-file" accept="application/json" hidden>
+<!-- 内核：先注入投资命名空间（库名/存储键/导出文件名/默认视图），再加载 core.js -->
+<script>window.GT_APP = { ns:'invest', db:'investDB', file:'invest-data.json', def:'invest', self:'invest.html', peer:'index.html', peerLabel:'目标追踪', peerIco:'🎯', navTitle:'投资研究', docTitle:'投资研究 · GoalTracker' };</script>
+<script>console.log('%c[GoalTracker · 投资研究] 独立应用版','background:#0ea97b;color:#fff;padding:2px 8px;border-radius:4px;font-weight:bold');</script>
+<script src="core.js"></script>
+<!-- 统一数据访问层（Repo）：跨模块查找/聚合唯一入口，须在所有投资模块之前加载 -->
+<script src="modules/data-repo.js"></script>
+<!-- CSV 工具箱：parseCsvSimple / downloadCsv 全站统一实现（macro/valuation/datahub/earnings 委托到此） -->
+<script src="modules/csv-kit.js"></script>
+<!-- 汉字转拼音库（公司搜索的拼音模糊匹配用；UMD → window.pinyinPro，加载失败时自动退化为原文匹配） -->
+<script src="lib/pinyin-pro.js"></script>
+<!-- 投资模块（投资追踪组）—— 侧边栏顺序 = 注册顺序，按研究数据流排列：
+     总览 → 宏观环境 → 行业研究(选赛道) → 财报跟踪(筛公司) → 公司估值(定价) → 待击球(执行) → 数据导入(数据支撑) -->
+<!-- 懒加载器：大模块（macro/industries/swing，合计 ~340KB）首次进入视图时才注入脚本；
+     占位模块先注册占住侧边栏位置与 hash 路由，真模块加载后由 core.js 原位替换并补 ensure(DB) -->
+<script>
+window.GT_LAZY = (function(){
+  const SRC = { macro:'modules/macro.js', industries:'modules/industries.js', swing:'modules/swing.js' };
+  const pending = {};
+  function load(view){
+    const src = SRC[view];
+    if(!src) return Promise.resolve();
+    if(!pending[src]){
+      pending[src] = new Promise(function(res, rej){
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = function(){
+          // 真模块已注册：补跑 ensure 用真实 seed 初始化 DB[view]（占位模块无 seed，不参与）
+          try { if(typeof DB !== 'undefined' && DB) ensure(DB); } catch(e){ console.error('懒加载 ensure 失败(' + view + '):', e); }
+          res();
+        };
+        s.onerror = function(){ delete pending[src]; rej(new Error('脚本加载失败：' + src)); };
+        document.head.appendChild(s);
+      });
+    }
+    return pending[src].then(function(){ if(state.view === view) render(); });
+  }
+  return { load: load };
+})();
+</script>
+<script src="modules/invest-home.js"></script>
+<!-- 宏观经济（懒加载占位：首进视图时注入 modules/macro.js，真模块原位替换） -->
+<script>Register.module({ view:'macro', nav:{ ico:'🌐', label:'宏观经济', group:'投资追踪' },
+  render: function(){ GT_LAZY.load('macro'); return '<div class="empty">⏳ 宏观经济模块加载中…</div>'; } });</script>
+<!-- 行业研究（懒加载占位） -->
+<script>Register.module({ view:'industries', nav:{ ico:'🏭', label:'行业研究', group:'投资追踪' },
+  render: function(){ GT_LAZY.load('industries'); return '<div class="empty">⏳ 行业研究模块加载中…</div>'; } });</script>
+<!-- 财报跟踪 -->
+<script src="modules/earnings.js"></script>
+<!-- 估值纯函数（被 valuation.js / invest-home 复用），须在 valuation.js 之前加载 -->
+<script src="modules/val-core.js"></script>
+<!-- 数据快照服务（导入/清空前自动快照 + 回滚；向全局 ACTIONS 注入 snap.* 动作） -->
+<script src="modules/snapshots.js"></script>
+<!-- 估值扩展（盈利预测面板 / CSV 导入导出，先于 valuation.js 注册 VAL_PLUGINS，由其装配） -->
+<script src="modules/val-forecast.js"></script>
+<script src="modules/val-io.js"></script>
+<script src="modules/valuation.js"></script>
+<!-- 共享财务库（估值 financials ⇄ 财报跟踪 rows 的写路径统一层；须在 valuation/earnings 之后加载，
+     ensure 迁移时两源数据已就绪；钩子运行时引用 window.FinStats 不受加载顺序影响） -->
+<script src="modules/finstats.js"></script>
+<!-- 统一公司详情页（估值池复用完整详情，非估值池精简页；须在 valuation.js 之后加载） -->
+<script src="modules/company.js"></script>
+<!-- 待击球台账（懒加载占位：现价/估值数据复用估值模块；真模块 modules/swing.js 首进视图时注入） -->
+<script>Register.module({ view:'swing', nav:{ ico:'⚾', label:'待击球', group:'投资追踪' },
+  render: function(){ GT_LAZY.load('swing'); return '<div class="empty">⏳ 待击球模块加载中…</div>'; } });</script>
+<!-- 数据导入（L0 stocks.json / 全站行情快照 + 数据更新脚本速查） -->
+<script src="modules/datahub.js"></script>
+<!-- 全局公司搜索（Ctrl+K / ⌘K，跨估值池·财报池·台账跳详情页；无视图，仅注册快捷键） -->
+<script src="modules/search.js"></script>
+<!-- 移动端交互 + Service Worker 注册 -->
+<script src="mobile.js"></script>
+<!-- 启动入口 -->
+<script src="boot.js"></script>
+</body>
+</html>

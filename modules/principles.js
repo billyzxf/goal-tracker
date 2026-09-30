@@ -342,13 +342,44 @@
       return '<div class="pr-due-item '+(st.s==='due'?'pr-overdue':st.s==='today'?'pr-today':'pr-soon')+'">'+
         '<span class="badge '+(st.s==='due'?'red':st.s==='today'?'blue':'amber')+'">'+tag+'</span>'+
         '<div class="pr-due-main"><div class="pr-due-title">'+esc(p.title)+'</div>'+
-        '<div class="muted">'+esc(sub)+' · '+esc(p.cat)+'</div></div>'+
+        '<div class="muted">'+esc(sub)+' · '+esc(p.cat)+'</div>'+
+        (p.point ? '<div class="pr-due-point">'+esc(p.point)+'</div>' : '')+'</div>'+
         '<button class="btn primary sm" data-action="pr.review" data-pid="'+p.id+'">去审视</button></div>';
     }).join('');
     return h + '</div>';
   }
 
-  /* ================= 渲染：原则库 ================= */
+  /* 未审视清单：从未审视过的原则，独立列出便于逐个补齐，不干扰已审原则的轮换节奏。
+     列表默认压缩只显示前 3 条，支持按原则类型筛选与展开/收起 */
+  function renderUnreviewed(){
+    const st = state.pr;
+    const all = P().principles.filter(p => p.status !== '已归档' && !lastReviewDate(p));
+    if(!all.length) return '';
+    const cat = st.unrevCat || '全部';
+    const un = cat === '全部' ? all : all.filter(p => p.cat === cat);
+    const chips = ['全部'].concat(PCATS)
+      .map(c => ({ c, n: c==='全部' ? all.length : all.filter(p=>p.cat===c).length }))
+      .filter(x => x.n > 0)
+      .map(x => '<button class="chip'+(cat===x.c?' active':'')+'" data-action="pr.unrevCat" data-v="'+x.c+'">'+x.c+'（'+x.n+'）</button>').join('');
+    const PREVIEW = 3;
+    const shown = st.unrevOpen ? un : un.slice(0, PREVIEW);
+    const hItems = shown.map(p =>
+      '<div class="pr-due-item pr-soon">'+
+        '<span class="badge amber">尚未审视</span>'+
+        '<div class="pr-due-main"><div class="pr-due-title">'+esc(p.title)+'</div>'+
+        '<div class="muted">'+esc(p.point || p.cat)+' · '+esc(p.cat)+' · '+esc(p.cycle||'每月')+'审视</div></div>'+
+        '<button class="btn primary sm" data-action="pr.review" data-pid="'+p.id+'">去审视</button></div>'
+    ).join('');
+    let h = '<div class="card pr-due"><div class="sec-title" style="margin-bottom:10px"><h2 style="color:var(--amber)">📋 尚未审视 · 请补齐</h2><div class="q-actions"><span class="badge amber">'+all.length+'</span></div></div>';
+    if(chips) h += '<div class="chips" style="margin-bottom:10px">'+chips+'</div>';
+    h += hItems;
+    if(un.length > PREVIEW){
+      h += '<div style="text-align:center;margin-top:10px"><button class="btn ghost sm" data-action="pr.unrevToggle">'+(st.unrevOpen ? '▲ 收起' : '▼ 展开全部 '+un.length+' 条')+'</button></div>';
+    }
+    return h + '</div>';
+  }
+
+  /* ================= 渲染：审视历史 ================= */
   function renderLib(){
     const st = state.pr;
     let h = '<div class="chips" style="margin-bottom:14px">' +
@@ -363,6 +394,18 @@
       return true;
     });
     if(st.libFav) list = list.filter(p => p.fav);
+    // 排序：按名称（拼音）/ 按审视日期（下次审视日期升序，未审视的排最后）/ 默认（添加顺序）
+    if(st.libSort === '按名称'){
+      list.sort((a,b) => String(a.title).localeCompare(String(b.title), 'zh-Hans-CN'));
+    } else if(st.libSort === '按审视日期'){
+      list.sort((a,b) => {
+        const da = nextDueDate(a), db = nextDueDate(b);
+        if(!da && !db) return 0;
+        if(!da) return 1;
+        if(!db) return -1;
+        return String(da).localeCompare(String(db));
+      });
+    }
 
     if(!list.length){ h += '<div class="card"><div class="empty">'+(P().principles.length?'没有匹配的原则':'暂无原则，点击「新增原则」开始')+'</div></div>'; return h; }
     h += '<div class="pr-grid">' + list.map(p => {
@@ -377,6 +420,7 @@
       return '<div class="card pr-card" data-action="pr.detail" data-pid="'+p.id+'">'+
         '<div class="sec-title" style="margin-bottom:6px"><h2>'+esc(p.title)+'</h2>'+
         '<div class="q-actions">'+
+        '<button class="icon-btn" title="立即审视" data-action="pr.review" data-pid="'+p.id+'">▶</button>'+
         '<button class="icon-btn '+(p.fav?'pr-fav-on':'')+'" title="收藏" data-action="pr.fav" data-pid="'+p.id+'">'+(p.fav?'★':'☆')+'</button>'+
         '<button class="icon-btn" title="编辑" data-action="pr.edit" data-pid="'+p.id+'">✎</button>'+
         '<button class="icon-btn" title="删除" data-action="pr.del" data-pid="'+p.id+'">✕</button></div></div>'+
@@ -509,13 +553,14 @@
 
   /* ================= 主渲染 ================= */
   function renderPrinciple(){
-    const st = state.pr = state.pr || { tab:'lib', libCat:'全部', libKw:'', logKw:'', libFav:false };
+    const st = state.pr = state.pr || { tab:'lib', libCat:'全部', libKw:'', logKw:'', libFav:false, libSort:'默认', unrevCat:'全部', unrevOpen:false };
     let h = header('📜 我的原则', '源于《原则》· 定期审视 · 发现真相',
       '<button class="btn ghost sm" data-action="pr.export" title="导出为 JSON，用于多端同步">⬇ 导出</button>' +
       '<button class="btn ghost sm" data-action="pr.import" title="从 JSON 导入原则数据">⬆ 导入</button>' +
       '<button class="btn primary" style="background:var(--indigo)" data-action="pr.add">＋ 新增原则</button>');
 
     h += renderDue();
+    h += renderUnreviewed();
 
     // Tab 导航
     const tabs = [ ['lib','📚 原则库'], ['review','🔄 定期审视'], ['logs','📝 原则日志'], ['stats','📊 数据统计'] ];
@@ -525,6 +570,9 @@
     if(st.tab === 'lib'){
       h += '<div class="pr-toolbar">'+
         '<input type="text" class="pr-search" placeholder="搜索原则标题 / 要点 / 内容" data-input="pr.libKw">'+
+        '<select class="pr-search" style="flex:none;min-width:auto;width:auto" data-change="pr.libSort" title="排序方式">'+
+          ['默认','按名称','按审视日期'].map(s => '<option'+((st.libSort||'默认')===s?' selected':'')+'>'+s+'</option>').join('')+
+        '</select>'+
         '<button class="btn ghost sm'+(st.libFav?'':'')+'" data-action="pr.libFav" title="只看收藏">'+(st.libFav?'★ 收藏中':'☆ 只看收藏')+'</button></div>';
       h += renderLib();
     } else if(st.tab === 'review'){
@@ -565,6 +613,8 @@
       'pr.tab': el => { state.pr.tab = el.dataset.v; render(); },
       'pr.libCat': el => { state.pr.libCat = el.dataset.v; render(); },
       'pr.libFav': () => { state.pr.libFav = !state.pr.libFav; render(); },
+      'pr.unrevCat': el => { state.pr.unrevCat = el.dataset.v; render(); },
+      'pr.unrevToggle': () => { state.pr.unrevOpen = !state.pr.unrevOpen; render(); },
       'pr.add': () => {
         openModal('新增原则',
           '<div class="field"><label>分类</label><select name="cat">'+catOptions()+'</select></div>'+
@@ -665,6 +715,9 @@
       'pr.libKw': el => { state.pr.libKw = el.value; render(); },
       'pr.logKw': el => { state.pr.logKw = el.value; render(); },
     },
+    changes: {
+      'pr.libSort': el => { state.pr.libSort = el.value; render(); },
+    },
     forms: {
       'pr.save': fd => {
         const id = fd.get('id');
@@ -687,7 +740,12 @@
     const title = p ? p.title : '';
     openModal('定期审视',
       '<div class="field"><label>选择原则</label><select name="title">'+principleOptions(title)+'</select></div>'+
-      '<div class="field"><label>审视日期</label><input type="date" name="date" value="'+dateStr()+'"></div>'+
+      '<div class="quick-row"><div class="field" style="flex:1"><label>审视日期</label><input type="date" name="date" value="'+dateStr()+'"></div>'+
+      '<div class="field" style="flex:1"><label>审视周期 <span style="color:var(--amber)">（可调整下次审视时间）</span></label><select name="cycle">'+cycleOptions(p ? (p.cycle||'每月') : '每月')+'</select>'+
+      '<div class="muted" style="font-size:12px;margin-top:4px">下次审视 = 本次审视日期 + 周期</div></div></div>'+
+      '<div class="field"><label>原则详细内容 <span style="color:var(--amber)">（可在审视时随手迭代优化）</span></label>'+
+      '<textarea name="prPoint" rows="6" style="width:100%;box-sizing:border-box;font-size:14px;font-family:inherit;line-height:1.5;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg);color:var(--ink);resize:vertical" placeholder="这条原则的详细内容 / 准则，审视后可在此完善">'+esc(p ? (p.content||'') : '')+'</textarea>'+
+      '<div class="muted" style="font-size:12px;margin-top:4px">保存审视时会一并把这里的修改写回原则库</div></div>'+
       '<div class="field"><label>坚持评分（1-5）</label><div class="pr-stars" id="rvStars">'+
         [1,2,3,4,5].map(n => '<button type="button" class="pr-star" data-n="'+n+'">★</button>').join('')+'</div></div>'+
       '<div class="field"><label>本次判定</label><div class="pr-verdicts" id="rvVerdicts">'+
@@ -719,6 +777,15 @@
           const g = P().goals.find(x => x.name === goalSel.value);
           if(g) root.querySelector('input[name=goalProgress]').value = g.progress;
         });
+        // 切换原则时，同步加载该原则的详细内容与审视周期
+        const rvTitleSel = root.querySelector('select[name=title]');
+        const rvPointTa = root.querySelector('textarea[name=prPoint]');
+        const rvCycleSel = root.querySelector('select[name=cycle]');
+        rvTitleSel.addEventListener('change', () => {
+          const pl = findPByTitle(rvTitleSel.value);
+          rvPointTa.value = (pl && pl.content) ? pl.content : '';
+          if(pl && pl.cycle) rvCycleSel.value = pl.cycle;
+        });
         window._rvScore = 3; window._rvVerdict = '部分坚持';
       });
   }
@@ -726,6 +793,12 @@
     const title = fd.get('title');
     if(!title){ alert('请选择原则'); return; }
     const p = findPByTitle(title);
+    // 把审视时迭代过的详细内容写回原则库（配合「定期审视卡片/弹窗」的编辑能力）
+    const newContent = fd.get('prPoint');
+    if(p && newContent != null && newContent !== (p.content || '')){ p.content = newContent; }
+    // 审视时可调整周期，从而改变下次审视时间（下次 = 本次审视日期 + 新周期天数）
+    const newCycle = fd.get('cycle');
+    if(p && newCycle && CYCLES.indexOf(newCycle) >= 0 && newCycle !== p.cycle){ p.cycle = newCycle; }
     const goal = fd.get('goal');
     const rv = { id:uid(), pid: p ? p.id : null, title, date: fd.get('date')||dateStr(),
       score: window._rvScore||3, verdict: window._rvVerdict||'部分坚持',
