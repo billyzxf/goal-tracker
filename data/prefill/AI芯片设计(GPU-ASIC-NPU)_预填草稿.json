@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "industry": "AI芯片设计(GPU/ASIC/NPU)",
+  "generatedAt": "2026-09-28T14:28:09",
+  "_howto": {
+    "_说明": "把本文件交给 AI 助手：按下面指引联网检索，把结果填入 prefill 对应字段，每填一项在 sources 里写来源（报告名/URL）。只能填 prefill/sources，不要改 existing。",
+    "age（定年纪·国产化率/渗透率）": [
+      "检索「AI芯片设计(GPU/ASIC/NPU) 国产化率 2025」「AI芯片设计(GPU/ASIC/NPU) 国产化份额 按金额」",
+      "有上期数据一并取（如 2024），前端两点自动算年化爬坡（pct/年）",
+      "区分口径：按金额 or 按数量/台数，口径写进 age.note",
+      "政策目标（十五五规划/大基金指引）填 target/targetYear",
+      "判定锚点：15–40% = 加速段⭐（黄金介入）；>70% 成熟红海；<5% 导入极早期"
+    ],
+    "tam（市场规模，亿美元）": [
+      "检索「AI芯片设计(GPU/ASIC/NPU) market size 2024 2025 forecast」「AI芯片设计(GPU/ASIC/NPU) 市场规模 亿美元」",
+      "取 2–4 个年份点（最新实际值 + 权威机构预测：SEMI/WSTS/TechInsights/Yole）",
+      "前端按首尾两点自动算 CAGR；涨价/通胀驱动的暴增年份勾 hot（含金量存疑）",
+      "driver 写当年主驱动（如 AI 数据中心/存储涨价）"
+    ],
+    "self（自给率，数量 vs 金额）": [
+      "检索「AI芯片设计(GPU/ASIC/NPU) 自给率 按金额」「AI芯片设计(GPU/ASIC/NPU) self-sufficiency rate by value」",
+      "尽量拿两个口径：数量自给率（台/块数）与金额自给率——差 ≥15pct 即「量的替代 ≠ 价的替代」",
+      "selfNote 写口径与来源（如：按台数 70% 是封装环节，按金额 27% 因先进制程仍进口）"
+    ]
+  },
+  "members": [
+    "688256 寒武纪",
+    "688041 海光信息",
+    "688047 龙芯中科",
+    "300474 景嘉微",
+    "688795 摩尔线程",
+    "688802 沐曦股份",
+    "688521 芯原股份",
+    "688343 云天励飞",
+    "688107 安路科技",
+    "688220 翱捷科技"
+  ],
+  "existing": {
+    "age": {
+      "metric": "国产化率",
+      "rate": null,
+      "rateYear": "",
+      "prevRate": null,
+      "prevYear": "",
+      "target": null,
+      "targetYear": "",
+      "note": ""
+    },
+    "health": {
+      "tam": [],
+      "qtySelf": null,
+      "valSelf": null,
+      "selfNote": ""
+    }
+  },
+  "sources": {
+    "age.rate": "2025年中国AI芯片市场：本土厂商份额攀升至41%（IDC数据，路透社转引），电子工程专辑，2026-04-03，https://www.eet-china.com/news/202604036210.html ；Reuters: Chinese chipmakers claim nearly half of local market as Nvidia's lead shrinks - IDC, 2026-04-01，https://www.reuters.com/world/china/chinese-chipmakers-claim-nearly-half-of-local-market-nvidias-lead-shrinks-idc-2026-04-01/",
+    "age.prevRate": "国产AI芯片须聚力生态建设应对国际竞争（2024年本土品牌渗透率约30%、出货82万张），科技日报，2025-08-11，http://paper.chinahightech.com/pc/attachment/202508/11/f41e4f0f-e963-434b-ad9c-f6b3ad0c15de.pdf",
+    "health.tam": "Frost & Sullivan: China General Purpose GPU Market Research（中国AI芯片2024年约2175亿元≈306亿美元），2025-12-30，https://www1.hkexnews.hk/listedco/listconews/sehk/2025/1230/11969956/2025123000068.pdf ；持续突破 国产AI芯片抢夺市场窗口期（Bernstein：2025年国内AI芯片需求395亿美元），中国证券报，2025-09-16，https://www.cs.com.cn/cj2020/202509/t20250916_6512884.html ；摩根大通国产半导体深度（中国AI GPU市场2026年约500亿→2030年约670亿美元），东方财富财富号，2026-06-27，https://caifuhao.eastmoney.com/news/20260627183628754715710 ；全球口径参考：Gartner Forecast Analysis 3Q25（GPU+AI加速器2024年约800亿→2029年超2800亿美元），2025-10-29，https://www.gartner.com/en/documents/7127730 ；Mordor Intelligence: AI Accelerators Market（2025年1405.5亿→2026年1746.9亿美元），https://www.mordorintelligence.com/industry-reports/ai-accelerators-market",
+    "health.qtySelf": "同 age.rate（IDC：2025年国产165万张/总量400万张=41%）；摩通：中国AI算力需求年复合增长约80%（2026/27/28年国内AI芯片供应200万/300万/500万颗、2028年本土满足80%AI基建需求），新浪财经，2026-09-03，https://finance.sina.com.cn/stock/estate/integration/2026-09-03/doc-iniqpqxw1114065.shtml",
+    "health.valSelf": "摩根大通国产半导体深度：AI算力驱动下的国产替代（2024年本土AI芯片收入约60亿美元、自给率33%→2030年510亿美元、76%），东方财富财富号，2026-06-27，https://caifuhao.eastmoney.com/news/20260627183628754715710"
+  },
+  "prefill": {
+    "age": {
+      "metric": "国产化率（按出货量·AI加速卡张数）",
+      "rate": 41,
+      "rateYear": "2025",
+      "prevRate": 30,
+      "prevYear": "2024",
+      "target": null,
+      "targetYear": "",
+      "note": "口径：中国大陆数据中心AI加速器市场，按出货量（张数）。2025年本土约165万张/总量400万张=41%（IDC，路透转引），英伟达约55%、AMD约4%；2024年约30%（出货82万张）；2023年仅约15%——15%→30%→41%逐年爬坡，前端按 30→41 两点算年化爬坡约 +11pct/年。机构分歧：Bernstein按收入口径 2023年17%→2027年55%；摩根大通（2026-09）称2025年本土芯片满足约40%的AI基建需求、2028年可达80%。政策端：'十五五'规划将集成电路列为新兴支柱产业之首但未设AI芯片自给率量化目标；行业报告称新建智算中心国产芯片占比要求≥50%；《中国制造2025》的70%芯片自给率目标已过期且未达成，故 target 留空不填以免误导。"
+    },
+    "ageTracks": [],
+    "health": {
+      "tam": [
+        { "year": 2024, "size": 306, "hot": false, "driver": "智算中心建设启动、国产替代起步（Frost & Sullivan：中国AI芯片收入约2175亿元≈306亿美元）" },
+        { "year": 2025, "size": 395, "hot": false, "driver": "美国出口管制切断高端供给、本土需求集中释放，运营商与互联网大厂集采国产芯片（Bernstein：国内AI芯片需求约395亿美元）" },
+        { "year": 2026, "size": 500, "hot": false, "driver": "推理需求占AI算力约85%、超节点规模化交付（摩根大通：中国AI GPU可服务市场约500亿美元）" },
+        { "year": 2030, "size": 670, "hot": false, "driver": "推理token消耗高增、本土供应扩产（摩根大通预测；2024→2030首尾两点CAGR≈14%/年）" }
+      ],
+      "qtySelf": 41,
+      "valSelf": 33,
+      "selfNote": "数量口径：2025年中国AI加速卡国产约165万/总量400万张=41%（IDC）；摩根大通按'本土芯片满足AI基建需求'口径2025年约40%、2028年预计80%（2026/27/28年供应200万/300万/500万颗）。金额口径：2024年本土AI芯片收入约60亿美元、自给率33%（摩根大通），预计2030年510亿美元、自给率76%。注意：两口径基准年不同（41%=2025年，33%=2024年）；同为2024年对比时金额33% vs 数量30%，差异不大（国产卡单价较低但集中于云端出货）。全球TAM参考：Gartner窄口径GPU+AI加速器2024年约800亿→2029年超2800亿美元；Mordor宽口径2025年1405.5亿→2026年1746.9亿美元——跨机构口径分歧大，趋势比绝对值可靠。"
+    },
+    "industry": {
+      "chain": "",
+      "lifecycle": "",
+      "policy": "'十五五'规划（2026-2030）将集成电路列为新兴支柱产业之首、要求全链条攻关；大基金三期募资约3440亿元，重点投向制造/设备/先进封装；行业报告称新建智算中心国产芯片占比要求不低于50%。",
+      "prosperityNote": ""
+    }
+  }
+}

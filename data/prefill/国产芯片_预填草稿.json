@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "industry": "国产芯片",
+  "generatedAt": "2026-09-28T14:24:16",
+  "_howto": {
+    "_说明": "把本文件交给 AI 助手：按下面指引联网检索，把结果填入 prefill 对应字段，每填一项在 sources 里写来源（报告名/URL）。只能填 prefill/sources，不要改 existing。",
+    "age（定年纪·国产化率/渗透率）": [
+      "检索「国产芯片 国产化率 2025」「国产芯片 国产化份额 按金额」",
+      "有上期数据一并取（如 2024），前端两点自动算年化爬坡（pct/年）",
+      "区分口径：按金额 or 按数量/台数，口径写进 age.note",
+      "政策目标（十五五规划/大基金指引）填 target/targetYear",
+      "判定锚点：15–40% = 加速段⭐（黄金介入）；>70% 成熟红海；<5% 导入极早期"
+    ],
+    "tam（市场规模，亿美元）": [
+      "检索「国产芯片 market size 2024 2025 forecast」「国产芯片 市场规模 亿美元」",
+      "取 2–4 个年份点（最新实际值 + 权威机构预测：SEMI/WSTS/TechInsights/Yole）",
+      "前端按首尾两点自动算 CAGR；涨价/通胀驱动的暴增年份勾 hot（含金量存疑）",
+      "driver 写当年主驱动（如 AI 数据中心/存储涨价）"
+    ],
+    "self（自给率，数量 vs 金额）": [
+      "检索「国产芯片 自给率 按金额」「国产芯片 self-sufficiency rate by value」",
+      "尽量拿两个口径：数量自给率（台/块数）与金额自给率——差 ≥15pct 即「量的替代 ≠ 价的替代」",
+      "selfNote 写口径与来源（如：按台数 70% 是封装环节，按金额 27% 因先进制程仍进口）"
+    ]
+  },
+  "members": [],
+  "existing": {
+    "age": {
+      "metric": "国产化率",
+      "rate": null,
+      "rateYear": "",
+      "prevRate": null,
+      "prevYear": "",
+      "target": null,
+      "targetYear": "",
+      "note": ""
+    },
+    "health": {
+      "tam": [],
+      "qtySelf": null,
+      "valSelf": null,
+      "selfNote": ""
+    }
+  },
+  "sources": {},
+  "prefill": {
+    "age": {
+      "metric": "",
+      "rate": null,
+      "rateYear": "",
+      "prevRate": null,
+      "prevYear": "",
+      "target": null,
+      "targetYear": "",
+      "note": ""
+    },
+    "ageTracks": [],
+    "health": {
+      "tam": [],
+      "qtySelf": null,
+      "valSelf": null,
+      "selfNote": ""
+    },
+    "industry": {
+      "chain": "",
+      "lifecycle": "",
+      "policy": "",
+      "prosperityNote": ""
+    }
+  }
+}

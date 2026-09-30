@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "industry": "AI服务器/算力整机",
+  "generatedAt": "2026-09-28T14:28:09",
+  "_howto": {
+    "_说明": "把本文件交给 AI 助手：按下面指引联网检索，把结果填入 prefill 对应字段，每填一项在 sources 里写来源（报告名/URL）。只能填 prefill/sources，不要改 existing。",
+    "age（定年纪·国产化率/渗透率）": [
+      "检索「AI服务器/算力整机 国产化率 2025」「AI服务器/算力整机 国产化份额 按金额」",
+      "有上期数据一并取（如 2024），前端两点自动算年化爬坡（pct/年）",
+      "区分口径：按金额 or 按数量/台数，口径写进 age.note",
+      "政策目标（十五五规划/大基金指引）填 target/targetYear",
+      "判定锚点：15–40% = 加速段⭐（黄金介入）；>70% 成熟红海；<5% 导入极早期"
+    ],
+    "tam（市场规模，亿美元）": [
+      "检索「AI服务器/算力整机 market size 2024 2025 forecast」「AI服务器/算力整机 市场规模 亿美元」",
+      "取 2–4 个年份点（最新实际值 + 权威机构预测：SEMI/WSTS/TechInsights/Yole）",
+      "前端按首尾两点自动算 CAGR；涨价/通胀驱动的暴增年份勾 hot（含金量存疑）",
+      "driver 写当年主驱动（如 AI 数据中心/存储涨价）"
+    ],
+    "self（自给率，数量 vs 金额）": [
+      "检索「AI服务器/算力整机 自给率 按金额」「AI服务器/算力整机 self-sufficiency rate by value」",
+      "尽量拿两个口径：数量自给率（台/块数）与金额自给率——差 ≥15pct 即「量的替代 ≠ 价的替代」",
+      "selfNote 写口径与来源（如：按台数 70% 是封装环节，按金额 27% 因先进制程仍进口）"
+    ]
+  },
+  "members": [
+    "000034 神州数码",
+    "000063 中兴通讯",
+    "000066 中国长城",
+    "000938 紫光股份",
+    "000977 浪潮信息",
+    "002261 拓维信息",
+    "300249 依米康",
+    "301236 软通动力",
+    "600498 烽火通信",
+    "600850 电科数字",
+    "601138 工业富联",
+    "603019 中科曙光",
+    "603296 华勤技术"
+  ],
+  "existing": {
+    "age": {
+      "metric": "国产化率",
+      "rate": null,
+      "rateYear": "",
+      "prevRate": null,
+      "prevYear": "",
+      "target": null,
+      "targetYear": "",
+      "note": ""
+    },
+    "health": {
+      "tam": [],
+      "qtySelf": null,
+      "valSelf": null,
+      "selfNote": ""
+    }
+  },
+  "sources": {
+    "age.rate": "预见2026：《2026年中国AI服务器产业全景图谱》（MIR睿工业2025H1份额：浪潮32.0%/中兴15.0%/超聚变12.2%/新华三12.0%/华为10.6%），前瞻产业研究院，2026-07-16，https://wap.stockstar.com/detail/IG2026071600007250 ；IDC：中国加速计算服务器市场规模将突破千亿美元（2024年结构：销售额前三浪潮/宁畅/新华三合计>50%），2025-03-31，https://my.idc.com/getdoc.jsp?containerId=prCHC53286125 ；IDC：AI服务器同比增长超一倍（2025H1中国160亿美元、2029F超1400亿美元、本土芯片品牌约35%），2025-10-09，https://my.idc.com/getdoc.jsp?containerId=prCHC53858025",
+    "health.tam": "IDC：AI Infrastructure Spending…2026 Forecast Raised to $497 Billion（全球AI基础设施：2024年1530亿/2025年3180亿/2026F 4970亿/2029F 1.08万亿美元，服务器占97.6%），2026-07-21，https://www.idc.com/resource-center/blog/ai-infrastructure-spending-holds-near-90-billion-in-q1-2026-as-arm-overtakes-x86-in-accelerated-servers-2026-forecast-raised-to-497-billion/ ；前瞻产业研究院（IDC：2025年中国AI服务器259亿美元、+36.32%），2026-07-16，https://wap.stockstar.com/detail/IG2026071600007250 ；中商产业研究院（中国2026F 3500亿元人民币），证券日报，2026-04-13，https://www.stcn.com/article/detail/3743571.html ；中国计算机行业协会（2025年AI服务器76.1万台、2530.3亿元≈356亿美元），新华社，2026-07-24，https://www.news.cn/tech/20260724/1fb5117ac37f4088883aa06d431b246b/c.html ；分歧口径：Fortune Business Insights 纯AI服务器2025年1946亿/2026年2622亿美元，SpecForge汇编，2026-09-22，https://www.sourcebyspec.com/news/ai-server-market-2026-vs-general-purpose-servers-usd-262b-vs-usd-102b-28-vs-13.html",
+    "health.qtySelf": "结构数据来源：IDC 2025H1（本土芯片品牌约35%）与 MIR 2025H1 整机CR5≈82%，见 age.rate / health.tam 来源；ODM出口口径：IDC Worldwide Server Tracker 2Q26（ODM Direct收入占比2Q25 60.6%→2Q26 53.9%，主要为出口代工），2026-09-10，https://www.idc.com/resource-center/press-releases/2q2026-wwserver-tracker/"
+  },
+  "prefill": {
+    "age": {
+      "metric": "国产化率（整机品牌口径·中国AI服务器市场，本土CR5代理）",
+      "rate": 82,
+      "rateYear": "2025",
+      "prevRate": null,
+      "prevYear": "",
+      "target": null,
+      "targetYear": "",
+      "note": "口径：中国AI服务器市场按销售额，本土品牌CR5合计（MIR睿工业2025H1）：浪潮32.0%+中兴15.0%+超聚变12.2%+新华三12.0%+华为10.6%≈82%——无机构发布'本土品牌合计'单值，以CR5为代理，实际本土合计>82%（海外品牌戴尔/HPE已边缘化）。2024年无可比CR5：IDC口径销售额前三浪潮/宁畅/新华三合计>50%、出货台数前三浪潮/宁畅/华为≈55%，均为本土，整机口径已接近饱和，爬坡意义有限。单厂分歧：界面新闻称浪潮2025年国内AI服务器市占率突破50%（AI服务器细分口径），与MIR的32%（x86服务器口径）不同。⚠️ 关键：整机份额≠芯片来源——浪潮等本土整机大量搭载英伟达GPU，按整机品牌计为'国产'，按核心芯片计2025年国产占比仅约41%（IDC，见'AI芯片设计'行业草稿）。政策端：整机环节无官方自给率量化目标，政策焦点在芯片（新建智算中心国产芯片占比≥50%、'十五五'集成电路全链条攻关），target 留空。"
+    },
+    "ageTracks": [],
+    "health": {
+      "tam": [
+        { "year": 2024, "size": 1530, "hot": false, "driver": "CSP大模型训练资本开支翻倍（IDC全球AI基础设施支出1530亿美元，服务器占97.6%+存储2.4%，同比+107.6%）" },
+        { "year": 2025, "size": 3180, "hot": false, "driver": "Hyperscaler资本开支持续扩张、Blackwell级机架规模系统出货（IDC：3180亿美元，同比约+108%）" },
+        { "year": 2026, "size": 4970, "hot": false, "driver": "IDC上调预测+56%：CSP capex再增逾50%、ARM机架超越x86、非GPU推理需求兴起（4970亿美元）" },
+        { "year": 2029, "size": 10800, "hot": false, "driver": "AI基建多年期承诺周期，IDC预计2029年破1万亿美元、2030年达1.21万亿；2024→2029首尾两点CAGR≈48%/年" }
+      ],
+      "qtySelf": null,
+      "valSelf": null,
+      "selfNote": "未找到官方'AI服务器自给率'单值（按台数/金额均无发布），如实留空。最接近的结构数据三层：(1) 内销整机：本土品牌绝对主导（2025H1 CR5≈82%全为本土，海外品牌边缘化），整机口径'自给'接近饱和；(2) 瓶颈在芯片：2024年国产加速芯片82万张/总量270万张≈30%→2025年165万/400万≈41%（IDC，按卡数）；(3) 内销vs出口须严格区分：中国是全球AI服务器主要组装地，工业富联等ODM为英伟达生态代工出口，IDC全球服务器Tracker显示ODM Direct收入占2Q25 60.6%、2Q26降至53.9%——出口代工产能不计入中国市场自给率。中国TAM参考（与全球口径分开看）：2024年221亿→2025年259亿美元（IDC）；中计协口径2025年76.1万台/2530.3亿元≈356亿美元，三方口径分歧源于是否含整机柜/一体机，趋势比绝对值可靠。"
+    },
+    "industry": {
+      "chain": "",
+      "lifecycle": "",
+      "policy": "整机环节无官方自给率量化目标；政策焦点在芯片与算力设施：新建智算中心要求国产芯片占比≥50%、'十五五'将集成电路全链条攻关列为首位、大基金三期约3440亿元重点投制造/设备/先进封装。",
+      "prosperityNote": ""
+    }
+  }
+}
