@@ -1,1808 +1,1822 @@
 {
   "schema": 1,
-  "generatedAt": "2026-10-02 14:27:15",
-  "fileCount": 262,
+  "generatedAt": "2026-10-05 16:45:58",
+  "fileCount": 264,
   "files": [
     {
       "path": "data/earnings/财报跟踪_20260601-20260915_allmarket2.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 712624,
       "rows": 2936
     },
     {
       "path": "data/earnings/财报跟踪_20260701-20260831.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 114677,
       "rows": 477
     },
     {
       "path": "data/earnings/财报跟踪_20260701-20260831_allmarket.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1275660,
       "rows": 5416
     },
     {
       "path": "data/earnings/财报跟踪_20260801-20260829.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 688170,
       "rows": 2829
     },
     {
       "path": "data/earnings/财报跟踪_20260801-20260831.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 803209,
       "rows": 3345
     },
     {
       "path": "data/earnings/财报跟踪_20260826.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 85249,
       "rows": 404
     },
     {
       "path": "data/earnings/财报跟踪_20260827-20260827.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 26782,
       "rows": 114
     },
     {
       "path": "data/earnings/财报跟踪_20260827.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 10572,
       "rows": 40
     },
     {
       "path": "data/earnings/财报跟踪_20260828-20260828.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 25100,
       "rows": 106
     },
     {
       "path": "data/earnings/财报跟踪_20260829-20260829.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 25591,
       "rows": 108
     },
     {
       "path": "data/earnings/财报跟踪_20260829-20260831.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 29062,
       "rows": 119
     },
     {
       "path": "data/earnings/财报跟踪_20260904_自选.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 815,
       "rows": 3
     },
     {
       "path": "data/earnings/财报跟踪_20260916_自选.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 193214,
       "rows": 864
     },
     {
       "path": "data/earnings/财报跟踪_20261001.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 17179,
       "rows": 73
     },
     {
       "path": "data/earnings/财报跟踪_20261002.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:27:15",
+      "mtime": "2026-10-05 16:44:14",
+      "size": 17179,
+      "rows": 73
+    },
+    {
+      "path": "data/earnings/财报跟踪_20261005.csv",
+      "dir": "earnings",
+      "mtime": "2026-10-05 16:45:58",
       "size": 17179,
       "rows": 73
     },
     {
       "path": "data/earnings/财报跟踪_累计.csv",
       "dir": "earnings",
-      "mtime": "2026-10-02 14:27:15",
+      "mtime": "2026-10-05 16:45:58",
       "size": 17179,
       "rows": 73
     },
     {
       "path": "data/financial/000155.SZ_川能动力.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3283,
       "rows": 21
     },
     {
       "path": "data/financial/000426.SZ_兴业银锡.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3260,
       "rows": 21
     },
     {
       "path": "data/financial/000528.SZ_柳工.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3320,
       "rows": 21
     },
     {
       "path": "data/financial/000791.SZ_甘肃能源.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3235,
       "rows": 21
     },
     {
       "path": "data/financial/000848.SZ_承德露露.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3206,
       "rows": 21
     },
     {
       "path": "data/financial/000915.SZ_华特达因.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3215,
       "rows": 21
     },
     {
       "path": "data/financial/000938.SZ_紫光股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3412,
       "rows": 21
     },
     {
       "path": "data/financial/000977.SZ_浪潮信息.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3427,
       "rows": 21
     },
     {
       "path": "data/financial/001232.SZ_嘉立创.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2145,
       "rows": 15
     },
     {
       "path": "data/financial/001380.SZ_华纬科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2997,
       "rows": 21
     },
     {
       "path": "data/financial/001389.SZ_广合科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2911,
       "rows": 21
     },
     {
       "path": "data/financial/002008.SZ_大族激光.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3332,
       "rows": 21
     },
     {
       "path": "data/financial/002111.SZ_威海广泰.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3218,
       "rows": 21
     },
     {
       "path": "data/financial/002185.SZ_华天科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3327,
       "rows": 21
     },
     {
       "path": "data/financial/002297.SZ_博云新材.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3192,
       "rows": 21
     },
     {
       "path": "data/financial/002371.SZ_北方华创.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3423,
       "rows": 21
     },
     {
       "path": "data/financial/002384.SZ_东山精密.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3341,
       "rows": 21
     },
     {
       "path": "data/financial/002415.SZ_海康威视.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3500,
       "rows": 21
     },
     {
       "path": "data/financial/002463.SZ_沪电股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3342,
       "rows": 21
     },
     {
       "path": "data/financial/002491.SZ_通鼎互联.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3253,
       "rows": 21
     },
     {
       "path": "data/financial/002558.SZ_巨人网络.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3174,
       "rows": 21
     },
     {
       "path": "data/financial/002602.SZ_世纪华通.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3367,
       "rows": 21
     },
     {
       "path": "data/financial/002648.SZ_卫星化学.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3368,
       "rows": 21
     },
     {
       "path": "data/financial/002690.SZ_美亚光电.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3206,
       "rows": 21
     },
     {
       "path": "data/financial/002841.SZ_视源股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3322,
       "rows": 21
     },
     {
       "path": "data/financial/002867.SZ_周大生.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3250,
       "rows": 21
     },
     {
       "path": "data/financial/002884.SZ_凌霄泵业.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3197,
       "rows": 21
     },
     {
       "path": "data/financial/002916.SZ_深南电路.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3324,
       "rows": 21
     },
     {
       "path": "data/financial/002957.SZ_科瑞技术.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3210,
       "rows": 21
     },
     {
       "path": "data/financial/002975.SZ_博杰股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3220,
       "rows": 21
     },
     {
       "path": "data/financial/003022.SZ_联泓新科.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3236,
       "rows": 21
     },
     {
       "path": "data/financial/300033.SZ_同花顺.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3149,
       "rows": 21
     },
     {
       "path": "data/financial/300181.SZ_佐力药业.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3206,
       "rows": 21
     },
     {
       "path": "data/financial/300308.SZ_中际旭创.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3387,
       "rows": 21
     },
     {
       "path": "data/financial/300319.SZ_麦捷科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3172,
       "rows": 21
     },
     {
       "path": "data/financial/300346.SZ_南大光电.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3178,
       "rows": 21
     },
     {
       "path": "data/financial/300394.SZ_天孚通信.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3240,
       "rows": 21
     },
     {
       "path": "data/financial/300398.SZ_飞凯材料.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3195,
       "rows": 21
     },
     {
       "path": "data/financial/300442.SZ_润泽科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3258,
       "rows": 21
     },
     {
       "path": "data/financial/300475.SZ_香农芯创.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3258,
       "rows": 21
     },
     {
       "path": "data/financial/300502.SZ_新易盛.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3321,
       "rows": 21
     },
     {
       "path": "data/financial/300628.SZ_亿联网络.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3258,
       "rows": 21
     },
     {
       "path": "data/financial/300661.SZ_圣邦股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3237,
       "rows": 21
     },
     {
       "path": "data/financial/300672.SZ_国科微.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3237,
       "rows": 21
     },
     {
       "path": "data/financial/300738.SZ_奥飞数据.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3189,
       "rows": 21
     },
     {
       "path": "data/financial/300750.SZ_宁德时代.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3621,
       "rows": 21
     },
     {
       "path": "data/financial/300770.SZ_新媒股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3191,
       "rows": 21
     },
     {
       "path": "data/financial/300926.SZ_博俊科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3224,
       "rows": 21
     },
     {
       "path": "data/financial/301696.SZ_三瑞智能.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1611,
       "rows": 13
     },
     {
       "path": "data/financial/600026.SH_中远海能.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3389,
       "rows": 21
     },
     {
       "path": "data/financial/600150.SH_中国船舶.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3487,
       "rows": 21
     },
     {
       "path": "data/financial/600160.SH_巨化股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3349,
       "rows": 21
     },
     {
       "path": "data/financial/600183.SH_生益科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3351,
       "rows": 21
     },
     {
       "path": "data/financial/600206.SH_有研新材.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3216,
       "rows": 21
     },
     {
       "path": "data/financial/600362.SH_江西铜业.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3437,
       "rows": 21
     },
     {
       "path": "data/financial/600487.SH_亨通光电.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3378,
       "rows": 21
     },
     {
       "path": "data/financial/600499.SH_科达制造.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3365,
       "rows": 21
     },
     {
       "path": "data/financial/600584.SH_长电科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3343,
       "rows": 21
     },
     {
       "path": "data/financial/600601.SH_方正科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3226,
       "rows": 21
     },
     {
       "path": "data/financial/600961.SH_株冶集团.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3217,
       "rows": 21
     },
     {
       "path": "data/financial/601138.SH_工业富联.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3486,
       "rows": 21
     },
     {
       "path": "data/financial/601869.SH_长飞光纤.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3318,
       "rows": 21
     },
     {
       "path": "data/financial/601872.SH_招商轮船.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3379,
       "rows": 21
     },
     {
       "path": "data/financial/603019.SH_中科曙光.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3321,
       "rows": 21
     },
     {
       "path": "data/financial/603025.SH_大豪科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3214,
       "rows": 21
     },
     {
       "path": "data/financial/603061.SH_金海通.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2992,
       "rows": 21
     },
     {
       "path": "data/financial/603173.SH_福斯达.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3118,
       "rows": 21
     },
     {
       "path": "data/financial/603186.SH_华正新材.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3236,
       "rows": 21
     },
     {
       "path": "data/financial/603259.SH_药明康德.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3451,
       "rows": 21
     },
     {
       "path": "data/financial/603268.SH_松发股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3311,
       "rows": 21
     },
     {
       "path": "data/financial/603444.SH_吉比特.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3151,
       "rows": 21
     },
     {
       "path": "data/financial/603629.SH_利通电子.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3164,
       "rows": 21
     },
     {
       "path": "data/financial/603636.SH_南威软件.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3305,
       "rows": 21
     },
     {
       "path": "data/financial/603871.SH_嘉友国际.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3250,
       "rows": 21
     },
     {
       "path": "data/financial/603893.SH_瑞芯微.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3240,
       "rows": 21
     },
     {
       "path": "data/financial/603986.SH_兆易创新.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3308,
       "rows": 21
     },
     {
       "path": "data/financial/603992.SH_松霖科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3194,
       "rows": 21
     },
     {
       "path": "data/financial/605099.SH_共创草坪.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3194,
       "rows": 21
     },
     {
       "path": "data/financial/605305.SH_中际联合.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3186,
       "rows": 21
     },
     {
       "path": "data/financial/605338.SH_巴比食品.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3170,
       "rows": 21
     },
     {
       "path": "data/financial/605499.SH_东鹏饮料.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3330,
       "rows": 21
     },
     {
       "path": "data/financial/688008.SH_澜起科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3247,
       "rows": 21
     },
     {
       "path": "data/financial/688012.SH_中微公司.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3327,
       "rows": 21
     },
     {
       "path": "data/financial/688041.SH_海光信息.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3301,
       "rows": 21
     },
     {
       "path": "data/financial/688110.SH_东芯股份.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3270,
       "rows": 21
     },
     {
       "path": "data/financial/688183.SH_生益电子.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3246,
       "rows": 21
     },
     {
       "path": "data/financial/688256.SH_寒武纪.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3345,
       "rows": 21
     },
     {
       "path": "data/financial/688372.SH_伟测科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3054,
       "rows": 21
     },
     {
       "path": "data/financial/688380.SH_中微半导.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3189,
       "rows": 21
     },
     {
       "path": "data/financial/688536.SH_思瑞浦.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3231,
       "rows": 21
     },
     {
       "path": "data/financial/688825.SH_长鑫科技.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1813,
       "rows": 13
     },
     {
       "path": "data/financial/688981.SH_中芯国际.csv",
       "dir": "financial",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3462,
       "rows": 21
     },
     {
       "path": "data/forecast/盈利预测_000155.SZ_川能动力.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 747,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_000426.SZ_兴业银锡.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1902,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_000528.SZ_柳工.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3673,
       "rows": 35
     },
     {
       "path": "data/forecast/盈利预测_000791.SZ_甘肃能源.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1006,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_000848.SZ_承德露露.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1176,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_000915.SZ_华特达因.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 917,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_000938.SZ_紫光股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3794,
       "rows": 35
     },
     {
       "path": "data/forecast/盈利预测_000977.SZ_浪潮信息.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3730,
       "rows": 35
     },
     {
       "path": "data/forecast/盈利预测_001232.SZ_嘉立创.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1292,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_001380.SZ_华纬科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 979,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_001389.SZ_广合科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1486,
       "rows": 15
     },
     {
       "path": "data/forecast/盈利预测_002008.SZ_大族激光.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2941,
       "rows": 27
     },
     {
       "path": "data/forecast/盈利预测_002111.SZ_威海广泰.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 738,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_002185.SZ_华天科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 957,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_002297.SZ_博云新材.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 156,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_002371.SZ_北方华创.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 5176,
       "rows": 47
     },
     {
       "path": "data/forecast/盈利预测_002384.SZ_东山精密.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3373,
       "rows": 31
     },
     {
       "path": "data/forecast/盈利预测_002415.SZ_海康威视.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3389,
       "rows": 31
     },
     {
       "path": "data/forecast/盈利预测_002463.SZ_沪电股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3452,
       "rows": 33
     },
     {
       "path": "data/forecast/盈利预测_002491.SZ_通鼎互联.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 162,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_002558.SZ_巨人网络.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4154,
       "rows": 39
     },
     {
       "path": "data/forecast/盈利预测_002602.SZ_世纪华通.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2857,
       "rows": 27
     },
     {
       "path": "data/forecast/盈利预测_002648.SZ_卫星化学.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4851,
       "rows": 45
     },
     {
       "path": "data/forecast/盈利预测_002690.SZ_美亚光电.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1904,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_002841.SZ_视源股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2828,
       "rows": 27
     },
     {
       "path": "data/forecast/盈利预测_002867.SZ_周大生.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3759,
       "rows": 35
     },
     {
       "path": "data/forecast/盈利预测_002884.SZ_凌霄泵业.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 156,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_002916.SZ_深南电路.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3789,
       "rows": 35
     },
     {
       "path": "data/forecast/盈利预测_002957.SZ_科瑞技术.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1656,
       "rows": 17
     },
     {
       "path": "data/forecast/盈利预测_002975.SZ_博杰股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1180,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_003022.SZ_联泓新科.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1850,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_300033.SZ_同花顺.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3554,
       "rows": 33
     },
     {
       "path": "data/forecast/盈利预测_300181.SZ_佐力药业.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1463,
       "rows": 15
     },
     {
       "path": "data/forecast/盈利预测_300308.SZ_中际旭创.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 5048,
       "rows": 45
     },
     {
       "path": "data/forecast/盈利预测_300319.SZ_麦捷科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 512,
       "rows": 7
     },
     {
       "path": "data/forecast/盈利预测_300346.SZ_南大光电.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 979,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_300394.SZ_天孚通信.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4060,
       "rows": 37
     },
     {
       "path": "data/forecast/盈利预测_300398.SZ_飞凯材料.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 751,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_300442.SZ_润泽科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1717,
       "rows": 17
     },
     {
       "path": "data/forecast/盈利预测_300475.SZ_香农芯创.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 802,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_300502.SZ_新易盛.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3587,
       "rows": 33
     },
     {
       "path": "data/forecast/盈利预测_300628.SZ_亿联网络.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2232,
       "rows": 21
     },
     {
       "path": "data/forecast/盈利预测_300661.SZ_圣邦股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2141,
       "rows": 21
     },
     {
       "path": "data/forecast/盈利预测_300672.SZ_国科微.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1043,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_300738.SZ_奥飞数据.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1473,
       "rows": 15
     },
     {
       "path": "data/forecast/盈利预测_300750.SZ_宁德时代.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6330,
       "rows": 55
     },
     {
       "path": "data/forecast/盈利预测_300770.SZ_新媒股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1209,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_300926.SZ_博俊科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1924,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_301696.SZ_三瑞智能.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 159,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_600026.SH_中远海能.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3298,
       "rows": 31
     },
     {
       "path": "data/forecast/盈利预测_600150.SH_中国船舶.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2714,
       "rows": 25
     },
     {
       "path": "data/forecast/盈利预测_600160.SH_巨化股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4440,
       "rows": 41
     },
     {
       "path": "data/forecast/盈利预测_600183.SH_生益科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3039,
       "rows": 29
     },
     {
       "path": "data/forecast/盈利预测_600206.SH_有研新材.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 513,
       "rows": 7
     },
     {
       "path": "data/forecast/盈利预测_600362.SH_江西铜业.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 971,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_600487.SH_亨通光电.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2476,
       "rows": 23
     },
     {
       "path": "data/forecast/盈利预测_600499.SH_科达制造.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1488,
       "rows": 15
     },
     {
       "path": "data/forecast/盈利预测_600584.SH_长电科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4243,
       "rows": 39
     },
     {
       "path": "data/forecast/盈利预测_600601.SH_方正科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 755,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_600961.SH_株冶集团.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 733,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_601138.SH_工业富联.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4234,
       "rows": 39
     },
     {
       "path": "data/forecast/盈利预测_601869.SH_长飞光纤.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1926,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_601872.SH_招商轮船.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3974,
       "rows": 37
     },
     {
       "path": "data/forecast/盈利预测_603019.SH_中科曙光.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3963,
       "rows": 37
     },
     {
       "path": "data/forecast/盈利预测_603025.SH_大豪科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 158,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_603061.SH_金海通.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1643,
       "rows": 17
     },
     {
       "path": "data/forecast/盈利预测_603173.SH_福斯达.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 156,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_603186.SH_华正新材.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 784,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_603259.SH_药明康德.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 5734,
       "rows": 52
     },
     {
       "path": "data/forecast/盈利预测_603268.SH_松发股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2922,
       "rows": 26
     },
     {
       "path": "data/forecast/盈利预测_603444.SH_吉比特.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 5446,
       "rows": 49
     },
     {
       "path": "data/forecast/盈利预测_603629.SH_利通电子.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 161,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_603636.SH_南威软件.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 161,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_603871.SH_嘉友国际.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3082,
       "rows": 29
     },
     {
       "path": "data/forecast/盈利预测_603893.SH_瑞芯微.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3888,
       "rows": 37
     },
     {
       "path": "data/forecast/盈利预测_603986.SH_兆易创新.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4097,
       "rows": 37
     },
     {
       "path": "data/forecast/盈利预测_603992.SH_松霖科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 782,
       "rows": 9
     },
     {
       "path": "data/forecast/盈利预测_605099.SH_共创草坪.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1885,
       "rows": 19
     },
     {
       "path": "data/forecast/盈利预测_605305.SH_中际联合.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1046,
       "rows": 11
     },
     {
       "path": "data/forecast/盈利预测_605338.SH_巴比食品.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3522,
       "rows": 33
     },
     {
       "path": "data/forecast/盈利预测_605499.SH_东鹏饮料.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6629,
       "rows": 61
     },
     {
       "path": "data/forecast/盈利预测_688008.SH_澜起科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3064,
       "rows": 29
     },
     {
       "path": "data/forecast/盈利预测_688012.SH_中微公司.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 4761,
       "rows": 43
     },
     {
       "path": "data/forecast/盈利预测_688041.SH_海光信息.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 5600,
       "rows": 52
     },
     {
       "path": "data/forecast/盈利预测_688110.SH_东芯股份.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1258,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_688183.SH_生益电子.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1262,
       "rows": 13
     },
     {
       "path": "data/forecast/盈利预测_688256.SH_寒武纪.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2987,
       "rows": 27
     },
     {
       "path": "data/forecast/盈利预测_688372.SH_伟测科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1443,
       "rows": 15
     },
     {
       "path": "data/forecast/盈利预测_688380.SH_中微半导.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 159,
       "rows": 3
     },
     {
       "path": "data/forecast/盈利预测_688536.SH_思瑞浦.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2165,
       "rows": 21
     },
     {
       "path": "data/forecast/盈利预测_688825.SH_长鑫科技.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2784,
       "rows": 26
     },
     {
       "path": "data/forecast/盈利预测_688981.SH_中芯国际.csv",
       "dir": "forecast",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2996,
       "rows": 28
     },
     {
       "path": "data/industry/AI产业链细分行业.backup-20260930.json",
       "dir": "industry",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 82520
     },
     {
       "path": "data/industry/AI产业链细分行业.json",
       "dir": "industry",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 80136
     },
     {
       "path": "data/industry/行业分类地图_20260915.csv",
       "dir": "industry",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 12103,
       "rows": 100
     },
     {
       "path": "data/industry/行业分类地图_20260916.csv",
       "dir": "industry",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1782217,
       "rows": 5559
     },
     {
       "path": "data/industry/行业分类地图_20260918.csv",
       "dir": "industry",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 1784634,
       "rows": 5560
     },
     {
       "path": "data/invest-data.json",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 29791507
     },
     {
       "path": "data/macro/domestic_债务货币.csv",
       "dir": "macro",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 10612,
       "rows": 464
     },
     {
       "path": "data/macro/domestic_国内宏观经济.csv",
       "dir": "macro",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 50828,
       "rows": 1941
     },
     {
       "path": "data/macro/global_国际宏观经济.csv",
       "dir": "macro",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 80733,
       "rows": 2893
     },
     {
       "path": "data/macro/宏观经济_全部数据.csv",
       "dir": "macro",
-      "mtime": "2026-10-02 14:24:23",
-      "size": 1859850,
-      "rows": 65587
+      "mtime": "2026-10-05 16:44:14",
+      "size": 1856331,
+      "rows": 65606
     },
     {
       "path": "data/prefill/AI医疗_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2917
     },
     {
       "path": "data/prefill/AI安防-机器视觉_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3379
     },
     {
       "path": "data/prefill/AI教育_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2917
     },
     {
       "path": "data/prefill/AI服务器-算力整机_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8203
     },
     {
       "path": "data/prefill/AI自选_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2553
     },
     {
       "path": "data/prefill/AI芯片设计(GPU-ASIC-NPU)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7851
     },
     {
       "path": "data/prefill/IDC数据中心-供电_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3393
     },
     {
       "path": "data/prefill/PCB-覆铜板-铜箔_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3379
     },
     {
       "path": "data/prefill/QFII重仓_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2509
     },
     {
       "path": "data/prefill/交换机-网络-高速铜缆_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3439
     },
     {
       "path": "data/prefill/人工智能_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2523
     },
     {
       "path": "data/prefill/先进封装-EDA_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3354
     },
     {
       "path": "data/prefill/光模块-光器件-光芯片(CPO-硅光)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3496
     },
     {
       "path": "data/prefill/具身智能-机器人_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3388
     },
     {
       "path": "data/prefill/半导体_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2502
     },
     {
       "path": "data/prefill/半导体材料_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3335
     },
     {
       "path": "data/prefill/半导体设备_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7654
     },
     {
       "path": "data/prefill/国产芯片_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2523
     },
     {
       "path": "data/prefill/大模型-AI应用软件_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3407
     },
     {
       "path": "data/prefill/存储芯片(HBM-DRAM-闪存)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3441
     },
     {
       "path": "data/prefill/智能驾驶-激光雷达_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3411
     },
     {
       "path": "data/prefill/服务器零部件(电源-液冷-连接器)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3528
     },
     {
       "path": "data/prefill/机构重仓_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2523
     },
     {
       "path": "data/prefill/消费电子组装(终端制造)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3085
     },
     {
       "path": "data/prefill/电子_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 2481
     },
     {
       "path": "data/prefill/端侧AI芯片(AI PC-手机-眼镜)_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3465
     },
     {
       "path": "data/prefill/算力租赁-云服务_预填草稿.json",
       "dir": "prefill",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3390
     },
     {
       "path": "data/prices/当前股价_20260830.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6979,
       "rows": 70
     },
     {
       "path": "data/prices/当前股价_20260901.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6939,
       "rows": 70
     },
     {
       "path": "data/prices/当前股价_20260903.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8410,
       "rows": 85
     },
     {
       "path": "data/prices/当前股价_20260904.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8514,
       "rows": 87
     },
     {
       "path": "data/prices/当前股价_20260907.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8803,
       "rows": 89
     },
     {
       "path": "data/prices/当前股价_20260908.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8812,
       "rows": 89
     },
     {
       "path": "data/prices/当前股价_20260909.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8794,
       "rows": 89
     },
     {
       "path": "data/prices/当前股价_20260910.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6941,
       "rows": 69
     },
     {
       "path": "data/prices/当前股价_20260911.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6965,
       "rows": 69
     },
     {
       "path": "data/prices/当前股价_20260915.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6906,
       "rows": 69
     },
     {
       "path": "data/prices/当前股价_20260916.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6913,
       "rows": 69
     },
     {
       "path": "data/prices/当前股价_20260917.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 6971,
       "rows": 69
     },
     {
       "path": "data/prices/当前股价_20260918.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 541757,
       "rows": 5211
     },
     {
       "path": "data/prices/当前股价_20260923.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7776,
       "rows": 73
     },
     {
       "path": "data/prices/当前股价_20260924.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8214,
       "rows": 73
     },
     {
       "path": "data/prices/当前股价_20260928.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8267,
       "rows": 73
     },
     {
       "path": "data/prices/当前股价_20260929.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 520794,
       "rows": 5416
     },
     {
       "path": "data/prices/当前股价_20260930.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7603,
       "rows": 73
     },
     {
       "path": "data/prices/当前股价_20261001.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 8226,
       "rows": 73
     },
     {
       "path": "data/prices/当前股价_20261002.csv",
       "dir": "prices",
-      "mtime": "2026-10-02 14:26:06",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7603,
+      "rows": 73
+    },
+    {
+      "path": "data/prices/当前股价_20261005.csv",
+      "dir": "prices",
+      "mtime": "2026-10-05 16:45:06",
+      "size": 8226,
       "rows": 73
     },
     {
       "path": "data/stocks.json",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 3030933
     },
     {
       "path": "data/公司列表.csv",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7451,
       "rows": 73
     },
     {
       "path": "data/公司列表_new1_2026-09-23.csv",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 7428,
       "rows": 73
     },
     {
       "path": "data/公司组_临时组_2026-09-07.csv",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 307,
       "rows": 3
     },
     {
       "path": "data/公司组_营收超预期_2026-09-03.csv",
       "dir": "",
-      "mtime": "2026-10-02 14:24:23",
+      "mtime": "2026-10-05 16:44:14",
       "size": 991,
       "rows": 16
     }
